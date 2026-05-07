@@ -56,9 +56,6 @@ from services.anilist_client import enrich_title_metadata
 from services.metrics import get_search_seed_titles
 
 BASE_URL = CATALOG_SITE_BASE.rstrip("/")
-SESSION_COOKIE_NAME = os.getenv("MANGABALL_SESSION_COOKIE_NAME", "PHPSESSID")
-SESSION_COOKIE_VALUE = os.getenv("MANGABALL_SESSION", "").strip()
-
 
 _HTTP_SEMAPHORE = asyncio.Semaphore(24)
 
@@ -499,6 +496,97 @@ def _extract_chapter_id(value: Any) -> str:
 
     match = re.search(r"\b([a-f0-9]{20,32})\b", text, flags=re.IGNORECASE)
     return match.group(1) if match else ""
+
+
+def _normalize_language_code(value: Any) -> str:
+    return _clean(value).lower().replace("_", "-")
+
+
+def _is_ptbr_language(value: Any) -> bool:
+    normalized = _normalize_language_code(value)
+    return normalized in {"pt-br", "ptbr", "pt"}
+
+
+def _language_from_flag_image(img: Any) -> str:
+    src = _clean(img.get("src") if img else "").lower()
+    alt = _normalize_language_code(img.get("alt") if img else "")
+    title = _normalize_language_code(img.get("title") if img else "")
+
+    for value in (alt, title):
+        if value:
+            return value
+
+    match = re.search(r"/flags/([^/?#]+)\.(?:webp|png|jpg|jpeg|svg)", src, flags=re.I)
+    if not match:
+        return ""
+    flag = match.group(1).lower()
+    if flag == "br":
+        return "pt-br"
+    if flag == "gb":
+        return "en"
+    return flag
+
+
+def _chapter_number_from_label(label: str) -> str:
+    text = _clean(label)
+    match = re.search(r"\bCh\.\s*([0-9]+(?:\.[0-9]+)?)", text, flags=re.I)
+    if match:
+        return match.group(1)
+    match = re.search(r"\bCap[ií]tulo\s*([0-9]+(?:\.[0-9]+)?)", text, flags=re.I)
+    if match:
+        return match.group(1)
+    return text
+
+
+def _parse_recent_chapter_entries(raw_html: Any) -> list[dict[str, Any]]:
+    html_text = str(raw_html or "").strip()
+    if not html_text:
+        return []
+
+    soup = BeautifulSoup(html_text, "html.parser")
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for anchor in soup.select("a[href*='/chapter-detail/']"):
+        href = _absolute_url(anchor.get("href"))
+        chapter_id = _extract_chapter_id(href)
+        if not chapter_id or chapter_id in seen:
+            continue
+
+        row = anchor
+        for _ in range(5):
+            parent = row.find_parent("div")
+            if parent is None:
+                break
+            row = parent
+            if row.select_one("img[src*='/flags/']"):
+                break
+
+        flag_img = row.select_one("img[src*='/flags/']")
+        language = _language_from_flag_image(flag_img)
+        group_img = row.select_one("a[href*='/group/'] img")
+        label = _clean(anchor.get_text(" ", strip=True))
+        row_text = _clean(row.get_text(" ", strip=True))
+        updated_at = ""
+        time_match = re.search(r"\b(\d+\s*[smhdw]\s+ago|just now|agora h[aá]\s+pouco)\b", row_text, flags=re.I)
+        if time_match:
+            updated_at = _clean(time_match.group(1))
+
+        seen.add(chapter_id)
+        entries.append(
+            {
+                "chapter_id": chapter_id,
+                "chapter_url": href,
+                "chapter_label": label,
+                "chapter_number": _chapter_number_from_label(label),
+                "language": language,
+                "language_flag": _absolute_url(flag_img.get("src") if flag_img else ""),
+                "group_name": _clean((group_img.get("title") or group_img.get("alt")) if group_img else ""),
+                "updated_at": updated_at,
+            }
+        )
+
+    return entries
 
 
 def _clean_og_title(raw: str) -> str:
@@ -1143,12 +1231,14 @@ def _normalize_catalog_item(item: dict[str, Any]) -> dict[str, Any]:
     raw_title = item.get("name") or item.get("title") or item.get("title_name")
     clean_title = _clean_catalog_title(raw_title)
     display_title = _display_catalog_title(raw_title, url)
+    recent_chapters = _parse_recent_chapter_entries(item.get("last_chapter") or item.get("latest_chapters"))
+    first_recent_chapter = recent_chapters[0] if recent_chapters else {}
 
     normalized = {
         "title_id": title_id,
-        "chapter_id": chapter_id,
+        "chapter_id": chapter_id or first_recent_chapter.get("chapter_id") or "",
         "url": url,
-        "chapter_url": chapter_url,
+        "chapter_url": chapter_url or first_recent_chapter.get("chapter_url") or "",
         "title": clean_title,
         "display_title": display_title or clean_title,
         "raw_title": _clean(raw_title),
@@ -1158,22 +1248,24 @@ def _normalize_catalog_item(item: dict[str, Any]) -> dict[str, Any]:
         "rating": _clean(item.get("rating") or item.get("score")),
         "followers": _clean(item.get("followers") or item.get("bookmark")),
         "views": _clean(item.get("views")),
-        "updated_at": _clean(item.get("updated_at") or item.get("updatedAt") or item.get("latest")),
-        "language": _clean(item.get("language") or item.get("lang") or item.get("language_code")).lower(),
-        "language_flag": _absolute_url(item.get("languageFlag") or item.get("flag")),
+        "updated_at": _clean(item.get("updated_at") or item.get("updatedAt") or item.get("latest") or first_recent_chapter.get("updated_at")),
+        "language": _normalize_language_code(item.get("language") or item.get("lang") or item.get("language_code") or first_recent_chapter.get("language")),
+        "language_flag": _absolute_url(item.get("languageFlag") or item.get("flag") or first_recent_chapter.get("language_flag")),
         "latest_chapter": _clean(
             item.get("chapter")
             or item.get("latest_chapter")
             or item.get("updated_chapter")
             or item.get("chapter_number")
+            or first_recent_chapter.get("chapter_number")
         ),
+        "recent_chapters": recent_chapters,
         "adult": bool(item.get("isAdult") or item.get("adult") or item.get("is_adult")),
     }
 
     _remember_title_url(title_id, url)
     _remember_title_summary(normalized)
-    if chapter_id and chapter_url:
-        _remember_chapter_url(chapter_id, chapter_url)
+    if normalized["chapter_id"] and normalized["chapter_url"]:
+        _remember_chapter_url(normalized["chapter_id"], normalized["chapter_url"])
     return normalized
 
 
@@ -1289,9 +1381,6 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
     )
     cookies = dict((browser_session or {}).get("cookies") or {})
 
-    if SESSION_COOKIE_VALUE:
-        cookies[SESSION_COOKIE_NAME] = SESSION_COOKIE_VALUE
-
     for attempt in range(3):
         try:
             async with _HTTP_SEMAPHORE:
@@ -1355,13 +1444,6 @@ async def _request_form_json_quick(path: str, data: dict[str, Any]) -> dict[str,
     headers = await _build_ajax_headers(None, referer, allow_browser_token=False)
     last_error: Exception | None = None
 
-    cookies: dict[str, str] = {}
-
-    if SESSION_COOKIE_VALUE:
-        cookies[SESSION_COOKIE_NAME] = SESSION_COOKIE_VALUE
-    if SESSION_COOKIE_VALUE:
-        cookies[SESSION_COOKIE_NAME] = SESSION_COOKIE_VALUE
-
     for attempt in range(2):
         try:
             async with _HTTP_SEMAPHORE:
@@ -1369,7 +1451,6 @@ async def _request_form_json_quick(path: str, data: dict[str, Any]) -> dict[str,
                     url,
                     data=data,
                     headers=headers,
-                    cookies=cookies or None,
                     timeout=FORM_QUICK_TIMEOUT,
                 )
             response.raise_for_status()
@@ -2405,14 +2486,7 @@ def get_cached_home_snapshot(limit: int = HOME_SECTION_LIMIT) -> dict[str, Any]:
 async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, Any]]:
     target_limit = max(1, int(limit))
     batch_size = max(24, target_limit * 4)
-    max_pages = max(3, min(10, (target_limit // 6) + 3))
-
-    def _normalize_lang(value: Any) -> str:
-        return _clean(value).lower().replace("_", "-")
-
-    def _is_ptbr_lang(value: Any) -> bool:
-        normalized = _normalize_lang(value)
-        return normalized in {"pt-br", "ptbr", "pt"}
+    max_pages = max(10, min(25, (target_limit // 3) + 8))
 
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -2428,84 +2502,88 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
 
         for item in raw_items:
             title_id = item.get("title_id") or ""
-            chapter_id = item.get("chapter_id") or ""
-            chapter_url = item.get("chapter_url") or ""
             title_url = item.get("url") or ""
-            chapter_number = item.get("latest_chapter") or item.get("chapter_number") or ""
-            chapter_data: dict[str, Any] | None = None
+            recent_entries = item.get("recent_chapters") or []
+            pt_entries = [
+                entry
+                for entry in recent_entries
+                if _is_ptbr_language(entry.get("language"))
+            ]
 
-            language = _normalize_lang(item.get("language"))
-            needs_detail_lookup = not _is_ptbr_lang(language)
-            if language and not _is_ptbr_lang(language):
+            if recent_entries and not pt_entries:
                 continue
 
-            if (not chapter_id or not chapter_number or not title_id or not title_url or needs_detail_lookup) and (chapter_url or chapter_id):
-                try:
-                    chapter_data = await get_chapter_details(chapter_url or chapter_id)
-                except Exception:
-                    chapter_data = None
-
-            if needs_detail_lookup:
-                detail_lang = _normalize_lang((chapter_data or {}).get("chapter_language"))
-                if not _is_ptbr_lang(detail_lang):
-                    continue
-                language = detail_lang or "pt-br"
-            elif not language:
-                language = "pt-br"
-
-            if chapter_data:
-                chapter_id = chapter_id or chapter_data.get("chapter_id") or ""
-                chapter_url = chapter_url or chapter_data.get("chapter_url") or ""
-                chapter_number = chapter_number or chapter_data.get("chapter_number") or ""
-                title_id = title_id or chapter_data.get("title_id") or ""
-                title_url = title_url or chapter_data.get("title_url") or ""
-                if not item.get("title"):
-                    item["title"] = chapter_data.get("title") or item.get("title")
-                item["cover_url"] = item.get("cover_url") or chapter_data.get("cover_url") or item.get("cover_url") or ""
-
-            if not chapter_id and title_id:
+            if pt_entries:
+                candidate_entries = pt_entries
+            elif title_id:
                 try:
                     chapter_payload = await get_chapter_list(title_id, "pt-br")
                 except Exception:
                     continue
                 latest = flatten_chapters(chapter_payload, "pt-br")
-                if latest:
-                    chapter_id = latest[0]["chapter_id"]
-                    chapter_url = latest[0]["chapter_url"]
-                    chapter_number = chapter_number or latest[0]["chapter_number"]
+                candidate_entries = [
+                    {
+                        "chapter_id": entry.get("chapter_id") or "",
+                        "chapter_url": entry.get("chapter_url") or "",
+                        "chapter_number": entry.get("chapter_number") or "",
+                        "updated_at": entry.get("updated_at") or "",
+                        "language": "pt-br",
+                    }
+                    for entry in latest[:1]
+                ]
+            else:
+                candidate_entries = []
 
-            if not chapter_id:
-                continue
+            for entry in candidate_entries:
+                chapter_id = entry.get("chapter_id") or ""
+                chapter_url = entry.get("chapter_url") or ""
+                chapter_number = entry.get("chapter_number") or item.get("latest_chapter") or item.get("chapter_number") or ""
+                if not chapter_id:
+                    continue
 
-            _remember_chapter_title(chapter_id, title_id)
+                _remember_chapter_title(chapter_id, title_id)
 
-            key = f"{title_id}:{chapter_id}" if title_id else chapter_id
-            if key in seen:
-                continue
-            seen.add(key)
+                key = f"{title_id}:{chapter_id}" if title_id else chapter_id
+                if key in seen:
+                    continue
+                seen.add(key)
 
-            title = item.get("title") or item.get("display_title") or "Manga"
-            display_title = item.get("display_title") or title
+                title = item.get("title") or item.get("display_title") or "Manga"
+                display_title = item.get("display_title") or title
+                summary = get_cached_title_summary(title_id) if title_id else None
+                genres = []
+                if isinstance(summary, dict):
+                    genres = summary.get("genres") or summary.get("anilist_genres") or []
+                if title_id and not genres:
+                    overview = get_cached_title_overview(title_id)
+                    if overview is None:
+                        try:
+                            overview = await get_title_overview(title_id)
+                        except Exception:
+                            overview = None
+                    if isinstance(overview, dict):
+                        genres = overview.get("genres") or overview.get("anilist_genres") or []
 
-            results.append(
-                {
-                    "title_id": title_id,
-                    "title": title,
-                    "display_title": display_title,
-                    "cover_url": item.get("cover_url") or "",
-                    "background_url": item.get("background_url") or item.get("cover_url") or "",
-                    "status": item.get("status") or "",
-                    "updated_at": item.get("updated_at") or "",
-                    "chapter_id": chapter_id,
-                    "chapter_url": chapter_url,
-                    "chapter_number": chapter_number,
-                    "language": language or "pt-br",
-                    "url": title_url,
-                }
-            )
+                results.append(
+                    {
+                        "title_id": title_id,
+                        "title": title,
+                        "display_title": display_title,
+                        "cover_url": item.get("cover_url") or "",
+                        "background_url": item.get("background_url") or item.get("cover_url") or "",
+                        "status": item.get("status") or "",
+                        "updated_at": entry.get("updated_at") or item.get("updated_at") or "",
+                        "chapter_id": chapter_id,
+                        "chapter_url": chapter_url,
+                        "chapter_number": chapter_number,
+                        "language": "pt-br",
+                        "genres": genres,
+                        "url": title_url,
+                    }
+                )
 
-            if len(results) >= target_limit:
-                return results[:target_limit]
+                if len(results) >= target_limit:
+                    return results[:target_limit]
 
         if len(raw_items) < batch_size:
             break
