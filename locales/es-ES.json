@@ -20,9 +20,9 @@
     "pt": "🇧🇷 Português",
     "en": "🇺🇸 English",
     "es": "🇪🇸 Español"
-  },
+   },
   "start": {
-    "welcome": "🎬 <b>Bienvenido a {brand}, {name}!</b>\n\nEncuentra manga, manhwa y manhua dentro de Telegram, con lectura rápida, historial, favoritos y modo offline.\n\n<blockquote>• 🔎 Busca por nombre\n• 📖 Abre capítulos en pocos toques\n• ⭐ Guarda favoritos y continúa después</blockquote>\n\n<i>Escribe el nombre de una obra o usa /buscar.</i>",
+    "welcome": "📚 <b>{brand}</b>\\n\\n<blockquote><b>Bienvenido:</b> <i>{name}</i>\\n<b>Catálogo:</b> <i>Manga, manhwa y manhua</i>\\n<b>Recursos:</b> <i>Favoritos, historial y lectura sin conexión</i></blockquote>\\n\\n✨ <i>Elige abajo cómo quieres continuar o escribe el nombre de una obra.</i>",
     "loading_title": "⏳ <b>Abriendo obra...</b>\n\nCargando detalles y capítulos.",
     "loading_chapter": "⏳ <b>Abriendo capítulo...</b>\n\nPreparando la lectura.",
     "timeout": "⚠️ Esta solicitud tardó demasiado. Inténtalo otra vez en unos segundos.",
@@ -75,3 +75,4 @@
     "body": "💸 <b>Programa de Afiliados Baltigo</b>\n\n<i>Convierte tus referidos en comisión dentro de Telegram.</i>\n\n📊 <b>Tu rendimiento</b>\n\n💰 Disponible: <b>{available}</b>\n⏳ En garantía: <b>{pending}</b>\n📈 Ventas válidas: <b>{sales}</b>\n\n🚀 Tú recomiendas, la persona se suscribe y la comisión se calcula automáticamente. Después del período de garantía, el valor queda disponible para retiro por Pix."
   }
 }
+
