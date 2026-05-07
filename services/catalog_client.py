@@ -2236,31 +2236,82 @@ def get_cached_chapter_reader_payload(chapter_ref: str, lang: str | None = None,
     return dict(cached)
 
 
+async def get_recent_chapter_updates(limit: int = HOME_SECTION_LIMIT) -> list[dict[str, Any]]:
+    target_limit = max(1, int(limit))
+    raw_items = await get_title_search(
+        "getRecentlyUpdatedChapter",
+        limit=max(24, target_limit * 3),
+        page=1,
+    )
+
+    def _is_ptbr_or_unknown(value: Any) -> bool:
+        normalized = _clean(value).lower().replace("_", "-")
+        return normalized in {"", "pt-br", "ptbr", "pt"}
+
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        if not _is_ptbr_or_unknown(item.get("language")):
+            continue
+        chapter_id = item.get("chapter_id") or ""
+        if not chapter_id:
+            continue
+        title_id = item.get("title_id") or ""
+        key = f"{title_id}:{chapter_id}" if title_id else chapter_id
+        if key in seen:
+            continue
+        seen.add(key)
+        item["language"] = item.get("language") or "pt-br"
+        _remember_chapter_title(chapter_id, title_id)
+        results.append(item)
+        if len(results) >= target_limit:
+            break
+    return results
+
+
 async def get_home_payload(limit: int = HOME_SECTION_LIMIT) -> dict[str, Any]:
     limit = max(4, int(limit))
 
-    featured, popular, recent_titles, latest_titles = await asyncio.gather(
-        get_title_search("getFeatured", limit=min(limit, 10)),
-        get_title_search("getPopular", limit=limit),
-        get_title_search("getRecentRead", limit=limit, search_time=RECENT_CHAPTER_TIME),
-        get_title_search("getLatestTable", limit=limit),
-    )
+    featured = await get_title_search("getFeatured", limit=min(limit, 10))
+    recommended = await get_title_search("getRecommend", limit=limit)
+    top_viewed = await get_title_search("getRecentRead", limit=limit, search_time=RECENT_CHAPTER_TIME)
+    latest_updates = await get_recent_chapter_updates(limit=max(limit, 12))
+    recent_chapter_read = await get_title_search("getRecentChapterRead", limit=limit, search_time=RECENT_CHAPTER_TIME)
+    popular_season = await get_title_search("getPopular", limit=limit)
 
     return {
         "featured": featured,
-        "popular": popular,
-        "recent_titles": recent_titles,
-        "latest_titles": latest_titles,
+        "recommended": recommended,
+        "top_viewed": top_viewed,
+        "latest_updates": latest_updates,
+        "recent_chapter_read": recent_chapter_read,
+        "popular_season": popular_season,
+        # Backward-compatible aliases used by older miniapp builds.
+        "popular": top_viewed,
+        "recent_titles": recent_chapter_read,
+        "latest_titles": latest_updates,
+        "recent_chapters": latest_updates,
     }
 
 
 def get_cached_home_snapshot(limit: int = HOME_SECTION_LIMIT) -> dict[str, Any]:
     limit = max(4, int(limit))
+    featured = get_cached_title_search("getFeatured", limit=min(limit, 10))
+    recommended = get_cached_title_search("getRecommend", limit=limit)
+    top_viewed = get_cached_title_search("getRecentRead", limit=limit, search_time=RECENT_CHAPTER_TIME)
+    recent_chapter_read = get_cached_title_search("getRecentChapterRead", limit=limit, search_time=RECENT_CHAPTER_TIME)
+    popular_season = get_cached_title_search("getPopular", limit=limit)
     return {
-        "featured": get_cached_title_search("getFeatured", limit=min(limit, 10)),
-        "popular": get_cached_title_search("getPopular", limit=limit),
-        "recent_titles": get_cached_title_search("getRecentRead", limit=limit, search_time=RECENT_CHAPTER_TIME),
-        "latest_titles": get_cached_title_search("getLatestTable", limit=limit),
+        "featured": featured,
+        "recommended": recommended,
+        "top_viewed": top_viewed,
+        "latest_updates": [],
+        "recent_chapter_read": recent_chapter_read,
+        "popular_season": popular_season,
+        "popular": top_viewed,
+        "recent_titles": recent_chapter_read,
+        "latest_titles": [],
+        "recent_chapters": [],
     }
 
 
@@ -2386,13 +2437,12 @@ async def warm_catalog_cache(*, include_home: bool = True) -> None:
 
     if include_home:
         try:
-            await asyncio.gather(
-                get_title_search("getFeatured", limit=6),
-                get_title_search("getPopular", limit=6),
-                get_title_search("getRecentRead", limit=6, search_time=RECENT_CHAPTER_TIME),
-                get_title_search("getLatestTable", limit=6),
-                get_recent_chapters(limit=min(AUTO_POST_LIMIT, 6)),
-            )
+            await get_title_search("getFeatured", limit=6)
+            await get_title_search("getRecommend", limit=6)
+            await get_title_search("getPopular", limit=6)
+            await get_title_search("getRecentRead", limit=6, search_time=RECENT_CHAPTER_TIME)
+            await get_title_search("getRecentChapterRead", limit=6, search_time=RECENT_CHAPTER_TIME)
+            await get_recent_chapter_updates(limit=6)
         except Exception:
             pass
 
