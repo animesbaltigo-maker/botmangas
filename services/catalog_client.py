@@ -57,6 +57,29 @@ from services.metrics import get_search_seed_titles
 
 BASE_URL = CATALOG_SITE_BASE.rstrip("/")
 
+def _preferred_chapter_language() -> str:
+    lang = _clean(PREFERRED_CHAPTER_LANG).lower().replace("_", "-")
+    return lang or "pt-br"
+
+
+def _chapter_language_cookies() -> dict[str, str]:
+    lang = _preferred_chapter_language()
+    return {
+        "chapterLanguage": lang,
+    }
+
+
+def _merge_chapter_language_cookies(cookies: dict[str, str] | None = None) -> dict[str, str]:
+    merged = dict(cookies or {})
+    merged.update(_chapter_language_cookies())
+    return merged
+
+
+def _chapter_language_cookie_header(cookies: dict[str, str] | None = None) -> str:
+    merged = _merge_chapter_language_cookies(cookies)
+    return "; ".join(f"{key}={value}" for key, value in merged.items() if _clean(key) and _clean(value))
+
+
 _HTTP_SEMAPHORE = asyncio.Semaphore(24)
 
 _CACHE: dict[str, dict[str, Any]] = {}
@@ -712,7 +735,7 @@ def _browser_session_snapshot() -> dict[str, Any] | None:
     if not _browser_session_is_valid():
         return None
     return {
-        "cookies": dict(_BROWSER_SESSION["cookies"]),
+        "cookies": _merge_chapter_language_cookies(_BROWSER_SESSION["cookies"]),
         "csrf_token": _BROWSER_SESSION["csrf_token"],
         "expires_at": _BROWSER_SESSION["expires_at"],
     }
@@ -745,7 +768,7 @@ async def _prepare_playwright_page(context, page) -> None:
 async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]:
     if not force_refresh and _browser_session_is_valid():
         return {
-            "cookies": dict(_BROWSER_SESSION["cookies"]),
+            "cookies": _merge_chapter_language_cookies(_BROWSER_SESSION["cookies"]),
             "csrf_token": _BROWSER_SESSION["csrf_token"],
             "expires_at": _BROWSER_SESSION["expires_at"],
         }
@@ -759,7 +782,7 @@ async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]
     async with _BROWSER_SESSION_LOCK:
         if not force_refresh and _browser_session_is_valid():
             return {
-                "cookies": dict(_BROWSER_SESSION["cookies"]),
+                "cookies": _merge_chapter_language_cookies(_BROWSER_SESSION["cookies"]),
                 "csrf_token": _BROWSER_SESSION["csrf_token"],
                 "expires_at": _BROWSER_SESSION["expires_at"],
             }
@@ -784,6 +807,7 @@ async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]
                     for item in (await context.cookies())
                     if _clean(item.get("name")) and _clean(item.get("value"))
                 }
+                cookies = _merge_chapter_language_cookies(cookies)
             finally:
                 await browser.close()
 
@@ -820,13 +844,18 @@ async def _build_ajax_headers(
         csrf_token = await get_csrf_token(allow_browser=allow_browser_token)
 
     referer = _absolute_url(referer) or f"{BASE_URL}/"
-    return {
+    headers = {
         "Accept": "application/json,text/plain,*/*",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
         "X-CSRF-TOKEN": csrf_token,
         "X-Requested-With": "XMLHttpRequest",
         "Referer": referer,
         "Origin": BASE_URL,
     }
+    cookie_header = _chapter_language_cookie_header((session or {}).get("cookies") if isinstance(session, dict) else None)
+    if cookie_header:
+        headers["Cookie"] = cookie_header
+    return headers
 
 
 async def _request_form_json_via_playwright(path: str, data: dict[str, Any], referer: str) -> dict[str, Any]:
@@ -1160,16 +1189,11 @@ def _normalize_catalog_item(item: dict[str, Any]) -> dict[str, Any]:
             item.get("language")
             or item.get("lang")
             or item.get("language_code")
-            or item.get("chapter_language")
             or item.get("chapterLanguage")
-        ).lower(),
-        "language_flag": _absolute_url(
-            item.get("languageFlag")
-            or item.get("language_flag")
-            or item.get("chapterLanguageFlag")
-            or item.get("chapter_language_flag")
-            or item.get("flag")
-        ),
+            or item.get("chapter_language")
+            or item.get("chapter_lang")
+        ).lower().replace("_", "-"),
+        "language_flag": _absolute_url(item.get("languageFlag") or item.get("language_flag") or item.get("flag")),
         "latest_chapter": _clean(
             item.get("chapter")
             or item.get("latest_chapter")
@@ -1296,7 +1320,7 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
         referer,
         allow_browser_token=bool(browser_session),
     )
-    cookies = dict((browser_session or {}).get("cookies") or {})
+    cookies = _merge_chapter_language_cookies(dict((browser_session or {}).get("cookies") or {}))
 
     for attempt in range(3):
         try:
@@ -1316,7 +1340,7 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
                 try:
                     browser_session = await _ensure_browser_session(force_refresh=True)
                     headers = await _build_ajax_headers(browser_session, referer)
-                    cookies = dict(browser_session.get("cookies") or {})
+                    cookies = _merge_chapter_language_cookies(dict(browser_session.get("cookies") or {}))
                 except Exception as error:
                     browser_error = error
                 await asyncio.sleep(0.35 * (attempt + 1))
@@ -1330,7 +1354,7 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
                     try:
                         browser_session = await _ensure_browser_session(force_refresh=True)
                         headers = await _build_ajax_headers(browser_session, referer)
-                        cookies = dict(browser_session.get("cookies") or {})
+                        cookies = _merge_chapter_language_cookies(dict(browser_session.get("cookies") or {}))
                     except Exception as browser_refresh_error:
                         browser_error = browser_refresh_error
             await asyncio.sleep(0.35 * (attempt + 1))
@@ -1358,7 +1382,8 @@ async def _request_form_json_quick(path: str, data: dict[str, Any]) -> dict[str,
     client = await get_http_client()
     url = _absolute_url(path)
     referer = _build_ajax_referer(path, data)
-    headers = await _build_ajax_headers(None, referer, allow_browser_token=False)
+    cookies = _merge_chapter_language_cookies()
+    headers = await _build_ajax_headers({"cookies": cookies}, referer, allow_browser_token=False)
     last_error: Exception | None = None
 
     for attempt in range(2):
@@ -1368,6 +1393,7 @@ async def _request_form_json_quick(path: str, data: dict[str, Any]) -> dict[str,
                     url,
                     data=data,
                     headers=headers,
+                    cookies=cookies or None,
                     timeout=FORM_QUICK_TIMEOUT,
                 )
             response.raise_for_status()
@@ -1385,20 +1411,24 @@ async def _request_form_json_cached_quick(path: str, data: dict[str, Any]) -> di
     url = _absolute_url(path)
     referer = _absolute_url(_build_ajax_referer(path, data)) or f"{BASE_URL}/"
     csrf_token = ""
-    cookies: dict[str, str] = {}
+    cookies: dict[str, str] = _merge_chapter_language_cookies()
 
     if _CSRF_TOKEN["value"] and time.time() < _CSRF_TOKEN["expires_at"]:
         csrf_token = _clean(_CSRF_TOKEN["value"])
     elif _browser_session_is_valid():
         csrf_token = _clean(_BROWSER_SESSION.get("csrf_token"))
-        cookies = dict(_BROWSER_SESSION.get("cookies") or {})
+        cookies = _merge_chapter_language_cookies(dict(_BROWSER_SESSION.get("cookies") or {}))
 
     headers = {
         "Accept": "application/json,text/plain,*/*",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
         "X-Requested-With": "XMLHttpRequest",
         "Referer": referer,
         "Origin": BASE_URL,
     }
+    cookie_header = _chapter_language_cookie_header(cookies)
+    if cookie_header:
+        headers["Cookie"] = cookie_header
     if csrf_token:
         headers["X-CSRF-TOKEN"] = csrf_token
 
@@ -1641,8 +1671,16 @@ def _title_bundle_cache_key(title_ref: str, resolved_lang: str) -> str:
 
 
 def _chapter_list_payload(title_id: str) -> dict[str, Any]:
-    # MangaBall returns every translation in one payload; language filtering happens client-side.
-    return {"title_id": title_id, "userSettingsEnabled": "false"}
+    # Keep the same full chapter payload, but send MangaBall's saved chapter-language setting too.
+    # The site stores this preference as the chapterLanguage cookie/config value.
+    lang = _preferred_chapter_language()
+    return {
+        "title_id": title_id,
+        "userSettingsEnabled": "true",
+        "chapterLanguage": lang,
+        "chapter_language": lang,
+        "language": lang,
+    }
 
 
 def _chapter_list_cache_key(title_id: str) -> str:
@@ -2415,35 +2453,30 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
     def _is_ptbr_item(item: dict[str, Any]) -> bool:
         language = _normalize_lang(
             item.get("language")
-            or item.get("language_code")
             or item.get("chapter_language")
             or item.get("chapterLanguage")
             or item.get("lang")
+            or item.get("language_code")
         )
-        if language:
-            return _is_ptbr_lang(language)
+        if _is_ptbr_lang(language):
+            return True
 
-        language_flag = _clean(
-            item.get("language_flag")
-            or item.get("languageFlag")
-            or item.get("chapter_language_flag")
-            or item.get("chapterLanguageFlag")
-            or item.get("flag")
-        ).lower()
-        return "br.webp" in language_flag or "/br." in language_flag or "flags/br" in language_flag
+        flag = _clean(item.get("language_flag") or item.get("languageFlag") or item.get("flag")).lower()
+        return "br.webp" in flag or "/br." in flag
 
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
 
     for page in range(1, max_pages + 1):
+        preferred_lang = _preferred_chapter_language()
         raw_items = await get_title_search(
             "getRecentlyUpdatedChapter",
             limit=batch_size,
             page=page,
-            chapter_language=PREFERRED_CHAPTER_LANG,
-            chapterLanguage=PREFERRED_CHAPTER_LANG,
-            language=PREFERRED_CHAPTER_LANG,
-            lang=PREFERRED_CHAPTER_LANG,
+            userSettingsEnabled="true",
+            chapterLanguage=preferred_lang,
+            chapter_language=preferred_lang,
+            language=preferred_lang,
         )
         if not raw_items:
             break
@@ -2456,25 +2489,10 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
             chapter_number = item.get("latest_chapter") or item.get("chapter_number") or ""
             chapter_data: dict[str, Any] | None = None
 
-            language = _normalize_lang(
-                item.get("language")
-                or item.get("chapter_language")
-                or item.get("chapterLanguage")
-                or item.get("language_code")
-                or item.get("lang")
-            )
-            has_language_hint = bool(language) or bool(
-                _clean(
-                    item.get("language_flag")
-                    or item.get("languageFlag")
-                    or item.get("chapter_language_flag")
-                    or item.get("chapterLanguageFlag")
-                    or item.get("flag")
-                )
-            )
-            if has_language_hint and not _is_ptbr_item(item):
+            language = _normalize_lang(item.get("language") or item.get("chapter_language"))
+            needs_detail_lookup = not _is_ptbr_item(item)
+            if language and not _is_ptbr_item(item):
                 continue
-            needs_detail_lookup = not has_language_hint
 
             if (not chapter_id or not chapter_number or not title_id or not title_url or needs_detail_lookup) and (chapter_url or chapter_id):
                 try:
