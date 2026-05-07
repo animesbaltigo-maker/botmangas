@@ -1540,10 +1540,9 @@ async def search_titles(query: str, limit: int = SEARCH_LIMIT) -> list[dict[str,
             return merged, not bool(quick_results or rich_results)
         if fallback_results:
             return fallback_results, True
-        if quick_error is not None and not _is_auth_block_error(quick_error):
-            raise quick_error
-        if rich_error is not None and not _is_auth_block_error(rich_error):
-            raise rich_error
+        if quick_error is not None or rich_error is not None:
+            schedule_warm_catalog_cache()
+            return [], True
         return [], False
 
     async def _runner():
