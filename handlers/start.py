@@ -164,9 +164,12 @@ async def _handle_referral(arg: str, user, message) -> None:
     await message.reply_text(text, parse_mode="HTML")
 
 
-def _miniapp_title_url(title_id: str) -> str:
+def _miniapp_title_url(title_id: str, user_id: int | None = None) -> str:
     base = (WEBAPP_BASE_URL or "").rstrip("/")
-    return f"{base}/miniapp/index.html?title_id={title_id}" if base else ""
+    if not base:
+        return ""
+    suffix = f"&user_id={int(user_id)}" if user_id else ""
+    return f"{base}/miniapp/index.html?title_id={title_id}{suffix}"
 
 
 def build_welcome_panel(user_id: int, first_name: str) -> tuple[str, InlineKeyboardMarkup]:
@@ -186,7 +189,7 @@ def build_welcome_panel(user_id: int, first_name: str) -> tuple[str, InlineKeybo
 
     for item in featured[:4]:
         title_id = str(item.get("title_id") or "").strip()
-        url = _miniapp_title_url(title_id)
+        url = _miniapp_title_url(title_id, user_id)
         if title_id and url:
             keyboard_rows.append(
                 [[InlineKeyboardButton(f"📘 {item.get('title') or 'Mangá'}", web_app=WebAppInfo(url=url))]]
@@ -219,7 +222,7 @@ async def _send_welcome(message, user_id: int, first_name: str) -> None:
 
     for item in featured[:4]:
         title_id = str(item.get("title_id") or "").strip()
-        url = _miniapp_title_url(title_id)
+        url = _miniapp_title_url(title_id, user_id)
         if not title_id or not url:
             continue
         keyboard_rows.append(
