@@ -372,7 +372,7 @@
     .section-count { color: var(--text3); font-size: 11.5px; margin-top: 3px; font-weight: 600; }
 
     /* ── SEARCH ── */
-    .search-section { margin-bottom: 20px; }
+    .search-section { margin-bottom: 20px; display: none; }
     .search-bar-home {
       display: flex; align-items: center; gap: 10px;
       height: 48px; background: var(--bg3); border: 1px solid var(--line);
@@ -600,8 +600,13 @@
     .synopsis-wrap { margin-top: 8px; }
     .synopsis-text { color: var(--text2); line-height: 1.72; font-size: 13.5px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
     .synopsis-text.expanded { display: block; -webkit-line-clamp: unset; }
+    .synopsis-extra-tags { display: none; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+    .synopsis-wrap.expanded .synopsis-extra-tags { display: flex; }
     .synopsis-toggle { margin-top: 6px; color: var(--accent3); font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; background: none; border: none; padding: 0; }
-    .detail-actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 16px; }
+    .detail-actions { display: flex; gap: 9px; flex-wrap: nowrap; margin-top: 16px; overflow-x: auto; scrollbar-width: none; }
+    .detail-actions::-webkit-scrollbar { display: none; }
+    .detail-actions .btn, .detail-actions .fav-heart-btn { flex: 0 0 auto; white-space: nowrap; }
+    .detail-actions .detail-extra-link { opacity: .72; }
     .detail-body { padding: 20px; }
 
     .fav-heart-btn {
@@ -668,8 +673,8 @@
     .chapter-download-btn { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; color: rgba(245,247,255,.72); border: 0; background: transparent; flex-shrink: 0; cursor: pointer; }
     .chapter-download-btn:active { background: rgba(255,255,255,.08); transform: scale(.94); }
     .chapter-download-btn.downloaded { color: #79e2aa; }
-    .chapter-filter-sheet { position: fixed; inset: auto 0 0; z-index: 260; padding: 0 0 calc(18px + var(--safe-b)); background: rgba(18,19,23,.98); border-top: 1px solid rgba(255,255,255,.10); box-shadow: 0 -20px 60px rgba(0,0,0,.55); transform: translateY(105%); transition: transform .22s var(--ease); }
-    .chapter-filter-sheet.open { transform: translateY(0); }
+    .chapter-filter-sheet { position: fixed; inset: auto 0 0; z-index: 260; padding: 0 0 calc(18px + var(--safe-b)); background: rgba(18,19,23,.98); border-top: 1px solid rgba(255,255,255,.10); box-shadow: 0 -20px 60px rgba(0,0,0,.55); transform: translateY(calc(100% + 140px)); opacity: 0; pointer-events: none; transition: transform .22s var(--ease), opacity .18s var(--ease); }
+    .chapter-filter-sheet.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
     .chapter-filter-tabs { height: 56px; display: grid; grid-template-columns: 1fr 1fr 48px; border-bottom: 1px solid rgba(255,255,255,.08); }
     .chapter-filter-tab { color: rgba(245,247,255,.74); font-size: 14px; font-weight: 750; position: relative; }
     .chapter-filter-tab.active { color: #ff7a66; }
@@ -774,6 +779,14 @@
       max-height: 42dvh;
       overflow: auto;
       padding-bottom: 14px;
+      transform: translateY(calc(100% + var(--navbar-h) + 80px));
+      opacity: 0;
+      pointer-events: none;
+    }
+    .chapter-filter-sheet.open {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
     }
     .chapter-filter-tabs { height: 52px; }
     .chapter-filter-tab { font-size: 13px; }
@@ -1001,7 +1014,8 @@
     .loading-overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
     .loading-card { width: min(90vw, 360px); padding: 24px; border-radius: var(--r-lg); background: rgba(10,13,26,.96); border: 1px solid var(--line2); box-shadow: var(--shadow-lg); text-align: center; }
     .loading-orb { width: 60px; height: 60px; margin: 0 auto 12px; border-radius: 50%; background: var(--grad); position: relative; box-shadow: 0 0 36px var(--glow); animation: orb-float 1.3s infinite alternate ease-in-out; }
-    .loading-orb::after { content: '📚'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 24px; }
+    .loading-orb::before { content: ''; position: absolute; inset: 15px; border-radius: 50%; border: 3px solid rgba(255,255,255,.28); border-top-color: #fff; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes orb-float { from { transform: translateY(0) scale(1); } to { transform: translateY(-5px) scale(1.04); } }
     .loading-title { font-family: var(--font-d); font-size: 18px; font-weight: 800; letter-spacing: -.03em; margin-bottom: 6px; }
     .loading-text { color: var(--text2); font-size: 12.5px; line-height: 1.6; }
@@ -1016,7 +1030,7 @@
 
     /* ── RESPONSIVE ── */
     @media (max-width: 600px) {
-      .detail-inner { flex-direction: column; align-items: flex-start; gap: 16px; padding: 20px 16px; }
+      .detail-inner { flex-direction: column; align-items: center; gap: 16px; padding: 20px 16px; text-align: left; }
       .detail-cover { width: 120px; }
       .detail-info { padding-top: 0; width: 100%; }
       .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
@@ -1439,6 +1453,7 @@ const state = {
   favorites: loadFavorites(),
   seenUpdates: loadSeenUpdates(),
   downloadedChapters: loadDownloadedChapters(),
+  progressServerState: {},
   cache: { home: null, titles: new Map(), chapters: new Map(), search: new Map() },
   inflight: { title: new Map(), chapter: new Map(), search: new Map() },
 };
@@ -1706,7 +1721,7 @@ async function syncUserDataWithServer() {
 }
 
 async function syncFavoriteWithServer(titleId, favorite, meta = {}) {
-  if (!state.userId || !titleId) return;
+  if (!state.userId || !titleId || !hasTelegramAuth()) return;
   try {
     const stored = state.favorites[titleId] || {};
     const response = await api("/api/favorites", {
@@ -2239,6 +2254,7 @@ function openProfilePage() {
   $$("profileName").textContent = name || "Usuário";
   $$("profileIdEl").textContent = username;
   $$("profileAvatarInitial").textContent = initial;
+  $$("profileAvatar").querySelectorAll("img").forEach(img => img.remove());
   if (photoUrl) {
     const img = document.createElement("img");
     img.src = photoUrl;
@@ -2284,16 +2300,48 @@ function openProfilePage() {
       <span class="profile-row-label">Armazenamento</span>
       <span class="profile-row-value">Local</span>
     </div>
+    <div class="profile-row" id="planStatusRow">
+      <span class="profile-row-label">Plano</span>
+      <span class="profile-row-value">Carregando...</span>
+    </div>
     <div style="padding-top:14px">
-      <button class="btn btn-primary" id="affiliateGatewayBtn" style="width:100%">Painel de afiliados</button>
+      <button class="btn btn-primary" id="planSubscribeBtn" style="width:100%">Ver planos e assinatura</button>
+    </div>
+    <div style="padding-top:10px">
+      <button class="btn btn-ghost" id="affiliateGatewayBtn" style="width:100%">Painel de afiliados</button>
     </div>
   `;
 
   const affiliateBtn = $$("affiliateGatewayBtn");
   if (affiliateBtn) affiliateBtn.onclick = openAffiliateGateway;
+  const planBtn = $$("planSubscribeBtn");
+  if (planBtn) planBtn.onclick = openAffiliateGateway;
+  loadPlanStatus().catch(() => {});
 
   setPage("profilePage");
   syncUrl({ route: "profile" });
+}
+
+async function loadPlanStatus() {
+  const row = $$("planStatusRow");
+  if (!row) return;
+  try {
+    const data = await api(`/api/plan/status${state.userId ? `?user_id=${encodeURIComponent(state.userId)}` : ""}`, { timeoutMs: 12000 });
+    row.innerHTML = `
+      <span class="profile-row-label">Plano</span>
+      <span class="profile-row-value">${esc(data.plan || "Gratuito")}</span>
+    `;
+    const btn = $$("planSubscribeBtn");
+    if (btn) {
+      btn.textContent = data.active ? "Gerenciar plano" : "Assinar plano offline";
+      btn.onclick = () => { window.location.href = data.subscribe_url || "/affiliate"; };
+    }
+  } catch (_) {
+    row.innerHTML = `
+      <span class="profile-row-label">Plano</span>
+      <span class="profile-row-value">Gratuito</span>
+    `;
+  }
 }
 
 function openAffiliateGateway() {
@@ -2471,7 +2519,7 @@ async function openCatalogSection(section = "manga", page = 1) {
   syncUrl({ route: key }, false);
 
   try {
-    const data = await api(`/api/sections/${encodeURIComponent(key)}?limit=24&page=${safePage}`, { timeoutMs: 45000 });
+    const data = await api(`/api/sections/${encodeURIComponent(key)}?limit=36&page=${safePage}`, { timeoutMs: 45000 });
     const items = data.items || [];
     renderGrid("catalogPageGrid", items, { emptyText: `Nada encontrado em ${sectionTitle(key)}.` });
     const totalPages = Number(data.total_pages || 1);
@@ -2608,6 +2656,7 @@ function renderDetail(bundle, opts = {}) {
   const lastRead = bundle?.last_read?.chapter_id || local?.chapter_id || "";
   const latestChapter = bundle?.latest_chapter?.chapter_id || chapters[0]?.chapter_id || "";
   const genres = bundle?.genres || [];
+  const translatedGenres = genres.map(translateTag).filter(Boolean);
   const description = stripHtml(bundle?.description || bundle?.anilist_description || "Sem descrição disponível.");
   const cover = bundle?.cover_url || "";
   const bg = bundle?.background_url || bundle?.banner_url || cover || "";
@@ -2636,10 +2685,10 @@ function renderDetail(bundle, opts = {}) {
             <h1 class="detail-title">${esc(bundle.title || "Mangá")}</h1>
             ${bundle.alternative_title ? `<div class="detail-alt">${esc(bundle.alternative_title)}</div>` : ""}
             <div class="detail-meta-row">${buildMetaPills(bundle, chapters)}</div>
-            <div class="detail-genres">${genres.slice(0, 8).map(g => `<span class="tag-pill">${esc(translateTag(g))}</span>`).join("")}</div>
             <div class="synopsis-wrap">
               <div class="synopsis-text" id="synopsisText">${esc(description)}</div>
-              ${description.length > 260 ? `<button class="synopsis-toggle" id="synopsisToggle">Ver mais <span id="synopsisArrow">▼</span></button>` : ""}
+              ${translatedGenres.length ? `<div class="synopsis-extra-tags" id="synopsisExtraTags">${translatedGenres.slice(0, 14).map(g => `<span class="tag-pill">${esc(g)}</span>`).join("")}</div>` : ""}
+              ${(description.length > 260 || translatedGenres.length) ? `<button class="synopsis-toggle" id="synopsisToggle">Ver mais <span id="synopsisArrow">▼</span></button>` : ""}
             </div>
             <div class="detail-actions">
               ${lastRead ? `<button class="btn btn-primary" id="continueReadBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Continuar</button>` : ""}
@@ -2648,7 +2697,7 @@ function renderDetail(bundle, opts = {}) {
                 <span class="fav-icon">${isFav(bundle.title_id) ? "❤️" : "🤍"}</span>
                 <span class="fav-label">${isFav(bundle.title_id) ? "Favoritado" : "Favoritar"}</span>
               </button>
-              ${bundle.anilist_url ? `<a class="btn btn-ghost btn-sm" href="${esc(bundle.anilist_url)}" target="_blank" rel="noreferrer">AniList ↗</a>` : ""}
+              ${bundle.anilist_url ? `<a class="btn btn-ghost btn-sm detail-extra-link" href="${esc(bundle.anilist_url)}" target="_blank" rel="noreferrer">AniList ↗</a>` : ""}
             </div>
           </div>
         </div>
@@ -2712,7 +2761,10 @@ function renderDetail(bundle, opts = {}) {
   let pendingDownload = { chapter: null, button: null };
   const readMap = {};
   Object.values(state.localProgress).forEach(p => {
-    if (p?.title_id === bundle.title_id && p?.chapter_id) readMap[p.chapter_id] = true;
+    const pageIndex = Number(p?.page_index || 0);
+    const totalPages = Number(p?.total_pages || 0);
+    const completed = totalPages > 0 && pageIndex / totalPages >= 0.9;
+    if (p?.title_id === bundle.title_id && p?.chapter_id && completed) readMap[p.chapter_id] = true;
   });
   const grid = $$("chapterGrid");
 
@@ -2910,9 +2962,11 @@ function renderDetail(bundle, opts = {}) {
 
   const synopsisToggle = $$("synopsisToggle");
   if (synopsisToggle) synopsisToggle.onclick = () => {
+    const wrap = synopsisToggle.closest(".synopsis-wrap");
     const text = $$("synopsisText");
     const arrow = $$("synopsisArrow");
     const expanded = text.classList.toggle("expanded");
+    wrap?.classList.toggle("expanded", expanded);
     synopsisToggle.childNodes[0].textContent = expanded ? "Ver menos " : "Ver mais ";
     if (arrow) arrow.textContent = expanded ? "▲" : "▼";
   };
@@ -2924,6 +2978,7 @@ function renderDetail(bundle, opts = {}) {
   if (detailFavBtn) detailFavBtn.addEventListener("click", () => handleFavClick(bundle.title_id, favMeta, detailFavBtn));
 
   setPage("detailPage");
+  window.scrollTo({ top: 0, behavior: "auto" });
   syncUrl({ route: opts.route === "chapters" ? "chapters" : "detail", titleId: bundle.title_id }, opts.replaceHistory ?? false);
 }
 
@@ -3517,12 +3572,25 @@ function attachReaderObserver(payload) {
 async function persistProgress(payload) {
   if (!payload?.title_id) return;
   setProgress(payload);
-  if (!state.userId) return;
+  if (!state.userId || !hasTelegramAuth()) return;
+  const pageIndex = Number(payload.page_index || 0);
+  const totalPages = Number(payload.total_pages || 0);
+  const pct = totalPages > 0 ? pageIndex / totalPages : 0;
+  const key = `${payload.title_id}:${payload.chapter_id || ""}`;
+  const previous = state.progressServerState[key] || { page: 0, at: 0 };
+  const now = Date.now();
+  const shouldPost =
+    pageIndex >= totalPages ||
+    pct >= 0.9 ||
+    pageIndex - Number(previous.page || 0) >= 3 ||
+    now - Number(previous.at || 0) > 15000;
+  if (!shouldPost) return;
+  state.progressServerState[key] = { page: pageIndex, at: now };
   try {
     await api("/api/progress", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: state.userId, title_id: payload.title_id, title_name: payload.title_name || "", chapter_id: payload.chapter_id || "", chapter_number: payload.chapter_number || "", chapter_url: "", page_index: Number(payload.page_index || 0), total_pages: Number(payload.total_pages || 0), cover_url: payload.cover_url || "", updated_at: Date.now() }),
+      body: JSON.stringify({ user_id: state.userId, title_id: payload.title_id, title_name: payload.title_name || "", chapter_id: payload.chapter_id || "", chapter_number: payload.chapter_number || "", chapter_url: "", page_index: pageIndex, total_pages: totalPages, cover_url: payload.cover_url || "", updated_at: now }),
     });
   } catch (_) {}
 }
@@ -3621,7 +3689,7 @@ $$("topbarSearchInput").addEventListener("input", () => {
   const v = $$("topbarSearchInput").value.trim();
   $$("topbarSearchClear").classList.toggle("visible", v.length > 0);
   clearTimeout(_searchTimer2);
-  if (v.length >= 2) _searchTimer2 = setTimeout(() => doSearch(v), 320);
+  if (v.length >= 3) _searchTimer2 = setTimeout(() => doSearch(v), 650);
   else if (!v) clearSearch();
 });
 $$("topbarSearchInput").addEventListener("keydown", e => {
