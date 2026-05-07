@@ -39,6 +39,7 @@ from config import (
     PDF_BULK_ALLOWED_IDS,
     PDF_PROTECT_CONTENT,
     PREFERRED_CHAPTER_LANG,
+    RECENT_CHAPTER_TIME,
     WEBAPP_CORS_ORIGINS,
     WEBAPP_TRUST_QUERY_USER_ID,
 )
@@ -48,6 +49,7 @@ from services.catalog_client import (
     get_cached_title_summary,
     get_chapter_reader_payload,
     get_home_payload,
+    get_recent_chapter_updates,
     get_recent_chapters,
     get_title_bundle,
     get_title_chapters_snapshot,
@@ -715,30 +717,26 @@ async def _search_with_suggestions(query: str, limit: int) -> dict[str, Any]:
 
 async def _home_payload(limit: int) -> dict[str, Any]:
     async def producer() -> dict[str, Any]:
-        payload, recent_chapters = await asyncio.gather(
-            get_home_payload(limit=limit),
-            get_recent_chapters(limit=min(limit * 2, 24)),
-        )
+        payload = await get_home_payload(limit=limit)
 
         featured = [_public_title_item(item) for item in (payload.get("featured") or []) if _has_real_chapter(item)]
-        popular = [_public_title_item(item) for item in (payload.get("popular") or []) if _has_real_chapter(item)]
-        recent_titles = [_public_title_item(item) for item in (payload.get("recent_titles") or []) if _has_real_chapter(item)]
-        latest_titles = [_public_title_item(item) for item in (payload.get("latest_titles") or []) if _has_real_chapter(item)]
+        recommended = [_public_title_item(item) for item in (payload.get("recommended") or []) if _has_real_chapter(item)]
+        top_viewed = [_public_title_item(item) for item in (payload.get("top_viewed") or []) if _has_real_chapter(item)]
+        recent_chapter_read = [
+            _public_title_item(item) for item in (payload.get("recent_chapter_read") or []) if _has_real_chapter(item)
+        ]
+        popular_season = [_public_title_item(item) for item in (payload.get("popular_season") or []) if _has_real_chapter(item)]
 
-        public_recent_chapters = []
+        latest_updates = []
         seen_chapters: set[str] = set()
-        for item in recent_chapters:
+        for item in payload.get("latest_updates") or payload.get("recent_chapters") or []:
             chapter_id = item.get("chapter_id") or ""
             if not chapter_id or chapter_id in seen_chapters:
                 continue
             seen_chapters.add(chapter_id)
-            public_recent_chapters.append(_public_title_item(item))
+            latest_updates.append(_public_title_item(item))
 
-        latest_titles.sort(
-            key=lambda item: (item.get("updated_at") or "", item.get("latest_chapter") or ""),
-            reverse=True,
-        )
-        public_recent_chapters.sort(
+        latest_updates.sort(
             key=lambda item: (
                 item.get("updated_at") or "",
                 item.get("chapter_number") or item.get("latest_chapter") or "",
@@ -748,10 +746,16 @@ async def _home_payload(limit: int) -> dict[str, Any]:
 
         return {
             "featured": featured[:limit],
-            "popular": popular[:limit],
-            "recent_titles": recent_titles[:limit],
-            "latest_titles": latest_titles[:limit],
-            "recent_chapters": public_recent_chapters[: max(limit, 12)],
+            "recommended": recommended[:limit],
+            "top_viewed": top_viewed[:limit],
+            "latest_updates": latest_updates[: max(limit, 12)],
+            "recent_chapter_read": recent_chapter_read[:limit],
+            "popular_season": popular_season[:limit],
+            # Backward-compatible aliases used by older miniapp builds and search suggestions.
+            "popular": top_viewed[:limit],
+            "recent_titles": recent_chapter_read[:limit],
+            "latest_titles": latest_updates[: max(limit, 12)],
+            "recent_chapters": latest_updates[: max(limit, 12)],
         }
 
     return await _stale_while_revalidate("home", _HOME_TTL, _HOME_TTL * 3, producer, limit=limit)
@@ -1393,8 +1397,20 @@ async def api_search(q: str = Query("", min_length=1), limit: int = Query(12, ge
 
 
 @app.get("/api/sections/{section_name}")
-async def api_section(section_name: str, limit: int = Query(12, ge=1, le=24)):
+async def api_section(section_name: str, limit: int = Query(12, ge=1, le=24), time: str = Query(RECENT_CHAPTER_TIME)):
     async def producer() -> dict[str, Any]:
+        if section_name == "latest_updates":
+            items = await get_recent_chapter_updates(limit=max(limit, 12))
+            clean = [_public_title_item(item) for item in items if _has_real_chapter(item)]
+            clean.sort(
+                key=lambda item: (
+                    item.get("updated_at") or "",
+                    item.get("chapter_number") or item.get("latest_chapter") or "",
+                ),
+                reverse=True,
+            )
+            return {"items": clean[:limit]}
+
         if section_name == "recent_chapters":
             items = await get_recent_chapters(limit=max(limit, 12))
             clean = [_public_title_item(item) for item in items if _has_real_chapter(item)]
@@ -1409,18 +1425,22 @@ async def api_section(section_name: str, limit: int = Query(12, ge=1, le=24)):
 
         section_map = {
             "featured": "getFeatured",
-            "popular": "getPopular",
-            "recent_titles": "getRecentRead",
+            "recommended": "getRecommend",
+            "top_viewed": "getRecentRead",
+            "recent_chapter_read": "getRecentChapterRead",
+            "popular_season": "getPopular",
+            "popular": "getRecentRead",
+            "recent_titles": "getRecentChapterRead",
             "latest_titles": "getLatestTable",
         }
         search_type = section_map.get(section_name)
         if not search_type:
             raise HTTPException(status_code=404, detail="Seção não encontrada.")
 
-        extra = {"search_time": "week"} if search_type == "getRecentRead" else {}
+        extra = {"search_time": time or RECENT_CHAPTER_TIME} if search_type in {"getRecentRead", "getRecentChapterRead"} else {}
         items = await get_title_search(search_type, limit=max(limit, 16), **extra)
         clean = [_public_title_item(item) for item in items if _has_real_chapter(item)]
-        if section_name in {"latest_titles", "recent_titles"}:
+        if section_name in {"latest_titles", "recent_titles", "recent_chapter_read"}:
             clean.sort(
                 key=lambda item: (item.get("updated_at") or "", item.get("latest_chapter") or ""),
                 reverse=True,
@@ -1434,6 +1454,7 @@ async def api_section(section_name: str, limit: int = Query(12, ge=1, le=24)):
         producer,
         section_name=section_name,
         limit=limit,
+        time=time,
     )
 
 
