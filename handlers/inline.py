@@ -21,6 +21,7 @@ from telegram.error import BadRequest, TelegramError
 from telegram.ext import ContextTypes
 
 from config import BOT_BRAND, BOT_USERNAME
+from handlers.callbacks import _ALLOWED_TAG_TRANSLATIONS, _norm_tag_label
 from services.catalog_client import (
     get_cached_search_titles,
     get_cached_title_summary,
@@ -295,15 +296,14 @@ def _display_genres(item: dict) -> str:
     cleaned: list[str] = []
     seen: set[str] = set()
     for value in genres:
-        label = str(value).strip().lstrip("#")
-        if not label:
-            continue
-        label = re.sub(r"\s+", "_", label)
-        tag = "#" + re.sub(r"[^\w]+", "", label, flags=re.UNICODE)
-        norm = tag.lower()
-        if tag == "#" or norm in seen:
+        norm = _norm_tag_label(str(value).strip().lstrip("#"))
+        translated = _ALLOWED_TAG_TRANSLATIONS.get(norm)
+        if not translated or norm in seen:
             continue
         seen.add(norm)
+        tag = "#" + re.sub(r"[^\w]+", "", translated[0].replace(" ", "_"), flags=re.UNICODE)
+        if tag == "#":
+            continue
         cleaned.append(tag)
         if len(cleaned) >= 4:
             break
@@ -380,7 +380,7 @@ def _build_message_text(item: dict, *, include_image_preview: bool = True) -> st
     )
 
     if image_url:
-        text += f'\n<a href="{html.escape(image_url, quote=True)}">​</a>'
+        text += f'<a href="{html.escape(image_url, quote=True)}">​</a>'
 
     return text
 
