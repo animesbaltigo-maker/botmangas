@@ -14,6 +14,7 @@ from telegram.ext import ContextTypes
 
 from config import ADMIN_IDS, BOT_USERNAME, CANAL_POSTAGEM_MANGA, PREFERRED_CHAPTER_LANG, STICKER_DIVISOR
 from core.channel_target import ensure_channel_target
+from handlers.callbacks import _ALLOWED_TAG_TRANSLATIONS, _norm_tag_label
 from services.catalog_client import (
     _request_form_json,
     flatten_chapters,
@@ -250,16 +251,14 @@ def _filter_display_genres(items: list[str], limit: int = 6) -> list[str]:
     seen: set[str] = set()
 
     for item in items or []:
-        pretty = _prettify_tag(item)
-        norm = _normalize_text(pretty)
+        norm = _norm_tag_label(_prettify_tag(item))
+        translated = _ALLOWED_TAG_TRANSLATIONS.get(norm)
 
-        if not _is_valid_display_genre(pretty):
-            continue
-        if norm in seen:
+        if not translated or norm in seen:
             continue
 
         seen.add(norm)
-        output.append(pretty)
+        output.append(translated[0])
 
         if len(output) >= limit:
             break
