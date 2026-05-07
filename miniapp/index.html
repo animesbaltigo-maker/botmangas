@@ -635,13 +635,13 @@
     /* ── DETAIL PAGE ── */
     .detail-panel { background: transparent; border: 0; border-radius: 24px; overflow: visible; box-shadow: none; }
     .detail-hero { position: relative; overflow: hidden; border-radius: 24px; min-height: 330px; border: 1px solid var(--line); box-shadow: var(--shadow-lg); background: #080a10; }
-    .detail-bg { position: absolute; inset: -22px; background-size: cover; background-position: center; transform: scale(1.08); filter: blur(14px) saturate(1.12); opacity: .76; }
+    .detail-bg { position: absolute; inset: -18px; background-size: cover; background-position: center; transform: scale(1.06); filter: blur(10px) saturate(1.45) contrast(1.08); opacity: .94; }
     .detail-grad-overlay {
       position: absolute; inset: 0;
-      background: linear-gradient(0deg, rgba(0,0,0,.88) 0%, rgba(0,0,0,.62) 52%, rgba(0,0,0,.34) 100%),
-                  linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.56) 50%, rgba(0,0,0,.22) 100%);
+      background: linear-gradient(0deg, rgba(0,0,0,.80) 0%, rgba(0,0,0,.52) 50%, rgba(0,0,0,.22) 100%),
+                  linear-gradient(90deg, rgba(0,0,0,.62) 0%, rgba(0,0,0,.46) 48%, rgba(0,0,0,.14) 100%);
     }
-    .detail-inner { position: relative; z-index: 2; display: grid; grid-template-columns: 142px minmax(0,1fr); gap: 18px; align-items: center; padding: 22px; min-height: 330px; }
+    .detail-inner { position: relative; z-index: 2; display: grid; grid-template-columns: 142px minmax(0,1fr); gap: 18px; align-items: center; padding: 22px 22px 12px; min-height: 242px; }
     .detail-cover { width: 100%; flex-shrink: 0; aspect-ratio: 2/3; border-radius: 20px; overflow: hidden; background: var(--bg4); border: 1px solid rgba(255,255,255,.22); box-shadow: 0 18px 55px rgba(0,0,0,.68), 0 0 32px rgba(255,65,46,.10); align-self: center; justify-self: center; }
     .detail-cover img { width: 100%; height: 100%; object-fit: cover; }
     .detail-info { flex: 1; min-width: 0; padding-top: 0; }
@@ -654,6 +654,7 @@
     .synopsis-extra-tags { display: none; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
     .synopsis-wrap.expanded .synopsis-extra-tags { display: flex; }
     .synopsis-toggle { margin-top: 6px; color: var(--accent3); font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; background: none; border: none; padding: 0; }
+    .detail-action-floor { position: relative; z-index: 2; padding: 0 22px 22px calc(22px + 142px + 18px); }
     .detail-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 0; overflow: visible; align-items: stretch; }
     .detail-actions.two-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .detail-actions::-webkit-scrollbar { display: none; }
@@ -1127,13 +1128,14 @@
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     /* ── FAV ANIM ── */
-    @keyframes fav-pop { 0% { transform: scale(1); } 30% { transform: scale(1.5); } 60% { transform: scale(0.9); } 100% { transform: scale(1); } }
-    .fav-popping { animation: fav-pop .4s var(--ease-spring) both; }
+    @keyframes fav-pop { 0% { transform: translateY(0) scale(1); } 45% { transform: translateY(-1px) scale(1.035); } 100% { transform: translateY(0) scale(1); } }
+    .fav-popping { animation: fav-pop .22s var(--ease-out) both; }
 
     /* ── RESPONSIVE ── */
     @media (max-width: 600px) {
       .detail-hero { min-height: 268px; border-radius: 22px; }
-      .detail-inner { grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 12px; padding: 14px; min-height: 268px; text-align: left; }
+      .detail-inner { grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 12px; padding: 14px 14px 10px; min-height: 204px; text-align: left; }
+      .detail-action-floor { padding: 0 14px 16px; }
       .detail-cover { width: 100%; border-radius: 16px; }
       .detail-info { padding-top: 0; width: 100%; }
       .detail-title { font-size: clamp(22px, 7vw, 32px); margin-bottom: 9px; }
@@ -2115,7 +2117,7 @@ function handleFavClick(titleId, meta = {}, btnEl = null) {
   }
   if (btnEl) {
     btnEl.classList.add("fav-popping");
-    setTimeout(() => btnEl.classList.remove("fav-popping"), 400);
+    setTimeout(() => btnEl.classList.remove("fav-popping"), 240);
   }
   toast(added ? "Adicionado aos favoritos e avisos ativados." : "Removido dos favoritos.");
 }
@@ -2574,8 +2576,11 @@ async function loadPlanStatus() {
 }
 
 function openAffiliateGateway() {
-  const url = `/affiliate${state.userId ? `?user_id=${encodeURIComponent(state.userId)}&bot=${encodeURIComponent("MangasBaltigo_Bot")}` : ""}`;
-  window.location.href = url;
+  const params = new URLSearchParams();
+  if (state.userId) params.set("user_id", state.userId);
+  if (tg?.initData) params.set("init_data", tg.initData);
+  params.set("bot", "MangasBaltigo_Bot");
+  window.location.href = `/affiliate${params.toString() ? `?${params.toString()}` : ""}`;
 }
 
 function cleanPlanLabel(label = "") {
@@ -2836,6 +2841,24 @@ async function loadHome(force = false) {
   }
 }
 
+function getCachedCatalogFallback(section) {
+  const home = state.cache.home || {};
+  const map = {
+    manga: "manga",
+    manhwa: "manhwa",
+    manhua: "manhua",
+    featured: "featured",
+    recommended: "recommended",
+    top_viewed: "top_viewed",
+    latest_updates: "latest_updates",
+    recent_chapter_read: "recent_read",
+    popular_season: "popular_season",
+  };
+  const key = map[section] || section;
+  const items = home[key];
+  return Array.isArray(items) ? items : [];
+}
+
 async function openCatalogSection(section = "manga", page = 1) {
   const key = String(section || "manga");
   const safePage = Math.max(1, Number(page || 1));
@@ -2852,7 +2875,11 @@ async function openCatalogSection(section = "manga", page = 1) {
 
   try {
     const data = await api(`/api/sections/${encodeURIComponent(key)}?limit=36&page=${safePage}`, { timeoutMs: 45000 });
-    const items = data.items || [];
+    let items = data.items || [];
+    if (!items.length) {
+      const fallback = getCachedCatalogFallback(key);
+      if (fallback.length) items = fallback;
+    }
     renderGrid("catalogPageGrid", items, { emptyText: `Nada encontrado em ${sectionTitle(key)}.` });
     const totalPages = Number(data.total_pages || 1);
     $$("catalogPager").classList.toggle("hidden", totalPages <= 1 && !data.has_next && !data.has_prev);
@@ -2863,6 +2890,13 @@ async function openCatalogSection(section = "manga", page = 1) {
     $$("catalogNextBtn").onclick = () => openCatalogSection(key, safePage + 1);
   } catch (err) {
     console.error("CATALOG:", err);
+    const fallback = getCachedCatalogFallback(key);
+    if (fallback.length) {
+      renderGrid("catalogPageGrid", fallback, { emptyText: `Nada encontrado em ${sectionTitle(key)}.` });
+      $$("catalogPager").classList.add("hidden");
+      toast("Catálogo carregado do cache local.");
+      return;
+    }
     $$("catalogPageGrid").innerHTML = emptyState("Não foi possível carregar esta categoria.");
     toast("Falha ao abrir categoria.");
   }
@@ -3147,14 +3181,16 @@ function renderDetail(bundle, opts = {}) {
           <div class="detail-info">
             <h1 class="detail-title">${esc(bundle.title || "Mangá")}</h1>
             <div class="detail-meta-row">${buildMetaPills(bundle, chapters)}</div>
-            <div class="detail-actions ${hasContinue ? "" : "two-actions"}">
-              ${lastRead ? `<button class="btn btn-primary" id="continueReadBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Continuar</button>` : ""}
-              ${latestChapter ? `<button class="btn" id="latestChBtn">Mais recente</button>` : ""}
-              <button class="fav-heart-btn ${isFav(bundle.title_id) ? "faved" : ""}" id="detailFavBtn" data-title-id="${esc(bundle.title_id)}">
-                <span class="fav-icon">${isFav(bundle.title_id) ? "❤" : "♡"}</span>
-                <span class="fav-label">${isFav(bundle.title_id) ? "Favoritado" : "Favoritar"}</span>
-              </button>
-            </div>
+          </div>
+        </div>
+        <div class="detail-action-floor">
+          <div class="detail-actions ${hasContinue ? "" : "two-actions"}">
+            ${lastRead ? `<button class="btn btn-primary" id="continueReadBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Continuar</button>` : ""}
+            ${latestChapter ? `<button class="btn" id="latestChBtn">Mais recente</button>` : ""}
+            <button class="fav-heart-btn ${isFav(bundle.title_id) ? "faved" : ""}" id="detailFavBtn" data-title-id="${esc(bundle.title_id)}">
+              <span class="fav-icon">${isFav(bundle.title_id) ? "❤" : "♡"}</span>
+              <span class="fav-label">${isFav(bundle.title_id) ? "Favoritado" : "Favoritar"}</span>
+            </button>
           </div>
         </div>
       </section>
