@@ -1468,6 +1468,7 @@
 //  TELEGRAM INIT
 // ══════════════════════════════════════════
 const tg = window.Telegram?.WebApp;
+try { if (tg?.initData) sessionStorage.setItem("telegramInitData", tg.initData); } catch (_) {}
 tg?.ready();
 tg?.expand();
 tg?.setBackgroundColor?.("#000000");
@@ -2578,7 +2579,9 @@ async function loadPlanStatus() {
 function openAffiliateGateway() {
   const params = new URLSearchParams();
   if (state.userId) params.set("user_id", state.userId);
-  if (tg?.initData) params.set("init_data", tg.initData);
+  let initData = tg?.initData || "";
+  try { initData = initData || sessionStorage.getItem("telegramInitData") || ""; } catch (_) {}
+  if (initData) params.set("init_data", initData);
   params.set("bot", "MangasBaltigo_Bot");
   window.location.href = `/affiliate${params.toString() ? `?${params.toString()}` : ""}`;
 }
