@@ -205,9 +205,6 @@ def _inline_keyboard(item: dict) -> InlineKeyboardMarkup:
         rows.append(
             [InlineKeyboardButton("📚 Abrir obra", url=_deep_link(f"title_{title_id}"))]
         )
-        rows.append(
-            [InlineKeyboardButton("📖 Lista de capítulos", url=_deep_link(f"chapters_{title_id}"))]
-        )
 
     if has_real_chapter:
         rows.append(
@@ -263,11 +260,36 @@ def _clean_display_value(value: Any, fallback: str = "N/A") -> str:
     return text or fallback
 
 
+def _format_rating_value(value: Any) -> str:
+    text = _clean_display_value(value, "")
+    if not text:
+        return ""
+    if "/" in text:
+        return text
+    try:
+        number = float(str(text).replace(",", "."))
+    except (TypeError, ValueError):
+        return text
+    if number <= 0:
+        return ""
+    if number > 10:
+        number = number / 10
+    return f"{number:.1f}"
+
+
 def _display_rating(item: dict) -> str:
-    return _clean_display_value(
-        item.get("rating") or item.get("anilist_score") or item.get("score"),
-        "0",
-    )
+    for value in (
+        item.get("rating"),
+        item.get("score"),
+        item.get("source_rating"),
+        item.get("site_rating"),
+        item.get("average_rating"),
+        item.get("anilist_score"),
+    ):
+        formatted = _format_rating_value(value)
+        if formatted:
+            return formatted
+    return "0"
 
 
 def _display_chapter_count(item: dict) -> str:
