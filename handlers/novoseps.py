@@ -21,6 +21,7 @@ POSTED_KEEP_LIMIT = 1000
 AUTO_POST_PERMISSION_COOLDOWN = 30 * 60
 RECENT_CHAPTER_FETCH_TIMEOUT = 75.0
 _AUTO_POST_DISABLED_UNTIL = 0.0
+_POST_NEW_EPS_LOCK = asyncio.Lock()
 
 
 def _is_admin(user_id: int | None) -> bool:
@@ -109,20 +110,15 @@ def _caption(item: dict) -> str:
             f"<b>Atualizado:</b> <i>{updated_at}</i>",
             f"<b>Gêneros:</b> <i>{genres}</i></blockquote>",
             "",
-            f"» <b>{channel}</b>",
+            f"» <b><i>{channel}</i></b>",
         ]
     )
 
 
 def _keyboard(item: dict) -> InlineKeyboardMarkup | None:
-    chapter_id = str(item.get("chapter_id") or "").strip()
     title_id = str(item.get("title_id") or "").strip()
-    if chapter_id:
-        return InlineKeyboardMarkup(
-            [[InlineKeyboardButton("📖 Ler capítulo", url=_deep_link(chapter_id, title_id))]]
-        )
     if title_id:
-        return InlineKeyboardMarkup([[InlineKeyboardButton("📚 Abrir obra", url=_title_link(title_id))]])
+        return InlineKeyboardMarkup([[InlineKeyboardButton("📚 Ler obra", url=_title_link(title_id))]])
     return None
 
 
@@ -204,22 +200,31 @@ async def postnovoseps(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
     )
 
-    try:
-        items = await asyncio.wait_for(
-            get_recent_chapters(limit=AUTO_POST_LIMIT),
-            timeout=RECENT_CHAPTER_FETCH_TIMEOUT,
+    if _POST_NEW_EPS_LOCK.locked():
+        await status_message.edit_text(
+            "⏳ <b>Já tem uma busca de novos capítulos em andamento.</b>\n\n"
+            "<i>Aguarde ela terminar para evitar postagem duplicada.</i>",
+            parse_mode="HTML",
         )
-        if not items:
-            await status_message.edit_text(
-                "⚠️ <b>Não encontrei capítulos recentes para postar.</b>",
-                parse_mode="HTML",
-            )
-            return
+        return
 
-        destination = await ensure_channel_target(context.bot, FORCED_CHANNEL_TARGET)
-        posted = _load_posted()
-        sent, failed, posted = await _post_recent_items(context.bot, destination, items, posted)
-        _save_posted(posted)
+    try:
+        async with _POST_NEW_EPS_LOCK:
+            items = await asyncio.wait_for(
+                get_recent_chapters(limit=AUTO_POST_LIMIT),
+                timeout=RECENT_CHAPTER_FETCH_TIMEOUT,
+            )
+            if not items:
+                await status_message.edit_text(
+                    "⚠️ <b>Não encontrei capítulos recentes para postar.</b>",
+                    parse_mode="HTML",
+                )
+                return
+
+            destination = await ensure_channel_target(context.bot, FORCED_CHANNEL_TARGET)
+            posted = _load_posted()
+            sent, failed, posted = await _post_recent_items(context.bot, destination, items, posted)
+            _save_posted(posted)
 
         await status_message.edit_text(
             "✅ <b>Postagem concluída.</b>\n\n"
@@ -249,20 +254,23 @@ async def auto_post_new_eps_job(context: ContextTypes.DEFAULT_TYPE):
     global _AUTO_POST_DISABLED_UNTIL
     if time.time() < _AUTO_POST_DISABLED_UNTIL:
         return
+    if _POST_NEW_EPS_LOCK.locked():
+        return
 
     try:
-        destination = await ensure_channel_target(context.bot, FORCED_CHANNEL_TARGET)
-        items = await asyncio.wait_for(
-            get_recent_chapters(limit=AUTO_POST_LIMIT),
-            timeout=RECENT_CHAPTER_FETCH_TIMEOUT,
-        )
-        if not items:
-            return
+        async with _POST_NEW_EPS_LOCK:
+            destination = await ensure_channel_target(context.bot, FORCED_CHANNEL_TARGET)
+            items = await asyncio.wait_for(
+                get_recent_chapters(limit=AUTO_POST_LIMIT),
+                timeout=RECENT_CHAPTER_FETCH_TIMEOUT,
+            )
+            if not items:
+                return
 
-        posted = _load_posted()
-        sent, failed, posted = await _post_recent_items(context.bot, destination, items, posted)
-        if sent or failed:
-            _save_posted(posted)
+            posted = _load_posted()
+            sent, failed, posted = await _post_recent_items(context.bot, destination, items, posted)
+            if sent or failed:
+                _save_posted(posted)
     except Exception as error:
         if _is_permission_error(error):
             _AUTO_POST_DISABLED_UNTIL = time.time() + AUTO_POST_PERMISSION_COOLDOWN
