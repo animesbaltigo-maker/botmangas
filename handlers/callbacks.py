@@ -1,5 +1,6 @@
 import asyncio
 import html
+import re
 import time
 from urllib.parse import urlencode
 
@@ -43,6 +44,7 @@ from services.metrics import (
 )
 from services.language_prefs import (
     bundle_language_options,
+    get_user_interface_language,
     get_user_language,
     language_badge,
     language_flag,
@@ -258,6 +260,92 @@ def _display_score(bundle: dict) -> str:
     return str(score)
 
 
+def _ui_lang(user_id: int | None) -> str:
+    locale = str(get_user_interface_language(user_id) or "pt-BR").lower()
+    if locale.startswith("es"):
+        return "es"
+    if locale.startswith("en"):
+        return "en"
+    return "pt"
+
+
+_STATUS_LABELS = {
+    "ongoing": {"pt": "Em andamento", "en": "Ongoing", "es": "En emisión"},
+    "completed": {"pt": "Concluído", "en": "Completed", "es": "Finalizado"},
+    "complete": {"pt": "Concluído", "en": "Completed", "es": "Finalizado"},
+    "hiatus": {"pt": "Em hiato", "en": "On hiatus", "es": "En pausa"},
+    "cancelled": {"pt": "Cancelado", "en": "Cancelled", "es": "Cancelado"},
+    "publishing": {"pt": "Em andamento", "en": "Publishing", "es": "En publicación"},
+    "finished": {"pt": "Concluído", "en": "Finished", "es": "Finalizado"},
+}
+
+
+_TITLE_BUTTONS = {
+    "latest": {"pt": "Último capítulo", "en": "Latest chapter", "es": "Último capítulo"},
+    "list": {"pt": "Lista de capítulos", "en": "Chapter list", "es": "Lista de capítulos"},
+    "offline": {"pt": "Ler off-line", "en": "Read offline", "es": "Leer sin conexión"},
+}
+
+
+_ALLOWED_TAG_TRANSLATIONS = {'romance': ('Romance', 'Romance', 'Romance'), 'comedy': ('Comédia', 'Comedy', 'Comedia'), 'drama': ('Drama', 'Drama', 'Drama'), 'fantasy': ('Fantasia', 'Fantasy', 'Fantasía'), 'slice of life': ('Cotidiano', 'Slice of Life', 'Recuentos de Vida'), 'action': ('Ação', 'Action', 'Acción'), 'boys love': ('Boys Love', 'Boys Love', 'Boys Love'), 'adventure': ('Aventura', 'Adventure', 'Aventura'), 'psychological': ('Psicológico', 'Psychological', 'Psicológico'), 'mystery': ('Mistério', 'Mystery', 'Misterio'), 'historical': ('Histórico', 'Historical', 'Histórico'), 'girls love': ('Girls Love', 'Girls Love', 'Girls Love'), 'tragedy': ('Tragédia', 'Tragedy', 'Tragedia'), 'sci fi': ('Ficção Científica', 'Sci Fi', 'Ciencia Ficción'), 'horror': ('Terror', 'Horror', 'Terror'), 'isekai': ('Isekai', 'Isekai', 'Isekai'), 'sports': ('Esportes', 'Sports', 'Deportes'), 'thriller': ('Suspense', 'Thriller', 'Suspenso'), 'adult': ('Adulto', 'Adult', 'Adulto'), 'crime': ('Crime', 'Crime', 'Crimen'), 'yaoi': ('Yaoi', 'Yaoi', 'Yaoi'), 'mecha': ('Mecha', 'Mecha', 'Mecha'), 'philosophical': ('Filosófico', 'Philosophical', 'Filosófico'), 'smut': ('Smut', 'Smut', 'Smut'), 'mature': ('Maduro', 'Mature', 'Maduro'), 'wuxia': ('Wuxia', 'Wuxia', 'Wuxia'), 'medical': ('Médico', 'Medical', 'Médico'), 'superhero': ('Super Herói', 'Superhero', 'Superhéroe'), 'magical girls': ('Garotas Mágicas', 'Magical Girls', 'Chicas Mágicas'), 'ecchi': ('Ecchi', 'Ecchi', 'Ecchi'), 'yuri': ('Yuri', 'Yuri', 'Yuri'), 'shounen ai': ('Shounen Ai', 'Shounen Ai', 'Shounen Ai'), 'user created': ('Criado por Usuário', 'User Created', 'Creado por Usuario'), 'revenge': ('Vingança', 'Revenge', 'Venganza'), 'shoujo g': ('Shoujo', 'Shoujo', 'Shoujo'), 'josei w': ('Josei', 'Josei', 'Josei'), 'hentai': ('Hentai', 'Hentai', 'Hentai'), 'school life': ('Vida Escolar', 'School Life', 'Vida Escolar'), 'supernatural': ('Sobrenatural', 'Supernatural', 'Sobrenatural'), 'comics': ('Quadrinhos', 'Comics', 'Cómics'), 'magic': ('Magia', 'Magic', 'Magia'), 'monsters': ('Monstros', 'Monsters', 'Monstruos'), 'martial arts': ('Artes Marciais', 'Martial Arts', 'Artes Marciales'), 'animals': ('Animais', 'Animals', 'Animales'), 'reincarnation': ('Reencarnação', 'Reincarnation', 'Reencarnación'), 'demons': ('Demônios', 'Demons', 'Demonios'), 'office workers': ('Escritório', 'Office Workers', 'Oficinistas'), 'harem': ('Harém', 'Harem', 'Harén'), 'survival': ('Sobrevivência', 'Survival', 'Supervivencia'), 'military': ('Militar', 'Military', 'Militar'), 'crossdressing': ('Crossdressing', 'Crossdressing', 'Travestismo'), 'video games': ('Jogos', 'Video Games', 'Videojuegos'), 'delinquents': ('Delinquentes', 'Delinquents', 'Delincuentes'), 'ghosts': ('Fantasmas', 'Ghosts', 'Fantasmas'), 'time travel': ('Viagem no Tempo', 'Time Travel', 'Viaje en el Tiempo'), 'cooking': ('Culinária', 'Cooking', 'Cocina'), 'monster girls': ('Garotas Monstro', 'Monster Girls', 'Chicas Monstruo'), 'police': ('Polícia', 'Police', 'Policía'), 'aliens': ('Alienígenas', 'Aliens', 'Alienígenas'), 'music': ('Música', 'Music', 'Música'), 'genderswap': ('Troca de Gênero', 'Genderswap', 'Cambio de Género'), 'vampires': ('Vampiros', 'Vampires', 'Vampiros'), 'mafia': ('Máfia', 'Mafia', 'Mafia'), 'samurai': ('Samurai', 'Samurai', 'Samurái'), 'post apocalyptic': ('Pós Apocalíptico', 'Post Apocalyptic', 'Postapocalíptico'), 'shota': ('Shota', 'Shota', 'Shota'), 'villainess': ('Vilã', 'Villainess', 'Villana'), 'incest': ('Incesto', 'Incest', 'Incesto'), 'reverse harem': ('Harém Reverso', 'Reverse Harem', 'Harén Inverso'), 'gyaru': ('Gyaru', 'Gyaru', 'Gyaru'), 'ninja': ('Ninja', 'Ninja', 'Ninja'), 'zombies': ('Zumbis', 'Zombies', 'Zombis'), 'loli': ('Loli', 'Loli', 'Loli'), 'traditional games': ('Jogos Tradicionais', 'Traditional Games', 'Juegos Tradicionales'), 'virtual reality': ('Realidade Virtual', 'Virtual Reality', 'Realidad Virtual'), 'manhwa 18': ('Manhwa 18+', 'Manhwa 18+', 'Manhwa 18+')}
+
+
+def _norm_tag_label(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _status_label(value: object, user_id: int | None) -> str:
+    lang = _ui_lang(user_id)
+    key = _norm_tag_label(value)
+    labels = _STATUS_LABELS.get(key)
+    if labels:
+        return labels.get(lang) or labels["pt"]
+    return str(value or ({"pt": "Não informado", "en": "Unknown", "es": "No informado"}[lang])).strip()
+
+
+def _title_button_label(key: str, user_id: int | None) -> str:
+    lang = _ui_lang(user_id)
+    return _TITLE_BUTTONS[key].get(lang) or _TITLE_BUTTONS[key]["pt"]
+
+
+def _hashtag(label: str) -> str:
+    clean = re.sub(r"[^\wÀ-ÿ]+", "", label, flags=re.UNICODE)
+    return f"#{clean}" if clean else ""
+
+
+def _title_genre_hashtags(bundle: dict, user_id: int | None, limit: int = 4) -> str:
+    lang = _ui_lang(user_id)
+    lang_index = {"pt": 0, "en": 1, "es": 2}[lang]
+    raw_tags = []
+    for key in ("genres", "anilist_genres", "tags"):
+        value = bundle.get(key) or []
+        if isinstance(value, str):
+            raw_tags.extend(part.strip() for part in value.split(","))
+        else:
+            raw_tags.extend(value)
+
+    seen: set[str] = set()
+    output: list[str] = []
+    for item in raw_tags:
+        if isinstance(item, dict):
+            item = item.get("name") or item.get("label") or item.get("title") or ""
+        norm = _norm_tag_label(item)
+        translated = _ALLOWED_TAG_TRANSLATIONS.get(norm)
+        if not translated or norm in seen:
+            continue
+        seen.add(norm)
+        tag = _hashtag(translated[lang_index])
+        if tag:
+            output.append(tag)
+        if len(output) >= limit:
+            break
+
+    if output:
+        return " ".join(output)
+    fallback = {"pt": "Não informado", "en": "Not listed", "es": "No informado"}
+    return fallback[lang]
+
+
 def _miniapp_url(
     *,
     title_id: str = "",
@@ -316,34 +404,36 @@ def _miniapp_url(
     return f"{base}/miniapp/index.html?{query}" if query else f"{base}/miniapp/index.html"
 
 
-def _title_text(bundle: dict, last_read: dict | None = None) -> str:
+def _title_text(bundle: dict, last_read: dict | None = None, user_id: int | None = None) -> str:
     title = html.escape(bundle.get("title") or "Manga")
     is_partial = bool(bundle.get("chapters_partial"))
     raw_status = bundle.get("status") or bundle.get("anilist_status") or ""
     raw_chapters = bundle.get("total_chapters") or bundle.get("anilist_chapters") or ""
-    status = html.escape(raw_status or ("carregando" if is_partial else "N/A"))
+    status = html.escape(_status_label(raw_status or ("carregando" if is_partial else ""), user_id))
     chapters = html.escape(str(raw_chapters or ("carregando" if is_partial else "?")))
-    score = _display_score(bundle)
-    genres = bundle.get("genres") or []
-    genres_text = html.escape(", ".join(str(item) for item in genres[:4])) if genres else ("carregando" if is_partial else "N/A")
+    score = _display_score(bundle) or "0"
+    score_text = html.escape(score if "/" in str(score) else f"{score}/10")
+    genres_text = html.escape(_title_genre_hashtags(bundle, user_id))
 
-    meta = [
-        f"» <b>Status:</b> <i>{status}</i>",
-        f"» <b>Capítulos:</b> <i>{chapters}</i>",
-    ]
-    if score:
-        meta.append(f"» <b>Nota:</b> <i>{html.escape(score)}</i>")
-    if last_read and last_read.get("chapter_number"):
-        meta.append(f"» <b>Continuar de:</b> <i>Capítulo {html.escape(last_read['chapter_number'])}</i>")
-
-    footer = "✨ <i>Escolha abaixo como quer continuar.</i>"
+    lang = _ui_lang(user_id)
+    footer = {
+        "pt": "✨ <i>Escolha abaixo como quer continuar.</i>",
+        "en": "✨ <i>Choose below how you want to continue.</i>",
+        "es": "✨ <i>Elige abajo cómo quieres continuar.</i>",
+    }[lang]
     if is_partial:
-        footer = "⏳ <i>Abri a obra. Vou atualizar este card em instantes.</i>"
+        footer = {
+            "pt": "⏳ <i>Abri a obra. Vou atualizar este card em instantes.</i>",
+            "en": "⏳ <i>I opened the title. I will update this card in a moment.</i>",
+            "es": "⏳ <i>Abrí la obra. Actualizaré esta tarjeta en un momento.</i>",
+        }[lang]
 
     return (
         f"📚 <b>{title}</b>\n\n"
-        f"{chr(10).join(meta)}\n"
-        f"» <b>Gêneros:</b> <i>{genres_text}</i>\n\n"
+        f"<blockquote><b>Status:</b> <i>{status}</i>\n"
+        f"<b>Capítulos:</b> <i>{chapters}</i>\n"
+        f"<b>Nota:</b> <i>{score_text}</i>\n"
+        f"<b>Gêneros:</b> <i>{genres_text}</i></blockquote>\n\n"
         f"{footer}"
     )
 
@@ -354,32 +444,10 @@ def _title_keyboard(bundle: dict, last_read: dict | None = None, user_id: int | 
     latest_chapter = bundle.get("latest_chapter") or {}
     lang = _user_lang(user_id)
 
-    primary_row: list[InlineKeyboardButton] = []
-
-
-    if title_id:
-       rows.append([InlineKeyboardButton(f"🌐 Idioma: {language_badge(lang)}", callback_data=f"mb|lang|{title_id}")])
-            
-    if last_read and last_read.get("chapter_id"):
-        primary_row.append(
-            InlineKeyboardButton(
-                "⏱ Continuar",
-                web_app=WebAppInfo(
-                    url=_miniapp_url(
-                        title_id=title_id,
-                        chapter_id=last_read["chapter_id"],
-                        route="reader",
-                        lang=lang,
-                        user_id=user_id,
-                    )
-                ),
-            )
-        )
-
     if latest_chapter.get("chapter_id"):
-        primary_row.append(
+        rows.append([
             InlineKeyboardButton(
-                "🆕 Último capítulo",
+                _title_button_label("latest", user_id),
                 web_app=WebAppInfo(
                     url=_miniapp_url(
                         title_id=title_id,
@@ -390,15 +458,12 @@ def _title_keyboard(bundle: dict, last_read: dict | None = None, user_id: int | 
                     )
                 ),
             )
-        )
+        ])
 
-    if primary_row:
-        rows.append(primary_row[:2])
-
-    rows.append(
-        [
+    if title_id:
+        rows.append([
             InlineKeyboardButton(
-                "📚 Lista de capítulos",
+                _title_button_label("list", user_id),
                 web_app=WebAppInfo(
                     url=_miniapp_url(
                         title_id=title_id,
@@ -408,15 +473,9 @@ def _title_keyboard(bundle: dict, last_read: dict | None = None, user_id: int | 
                         user_id=user_id,
                     )
                 ),
-            )
-        ]
-    )
-
-    if bundle.get("anilist_url"):
-        rows.append([InlineKeyboardButton("📖 Descrição", url=bundle["anilist_url"])])
-
-    if title_id:
-        rows.append([InlineKeyboardButton("📥 Ler offline", callback_data=f"mb|offline|{title_id}")])
+            ),
+            InlineKeyboardButton(_title_button_label("offline", user_id), callback_data=f"mb|offline|{title_id}"),
+        ])
 
     return InlineKeyboardMarkup(rows)
 
@@ -1088,7 +1147,7 @@ async def _auto_finalize_title_panel(
             context,
             chat_id=chat_id,
             message_id=message_id,
-            text=_title_text(bundle, last_read),
+            text=_title_text(bundle, last_read, user_id),
             keyboard=_title_keyboard(bundle, last_read, user_id),
             photo=_pick_bundle_image(bundle),
         )
@@ -1228,7 +1287,7 @@ async def send_title_panel(target, context: ContextTypes.DEFAULT_TYPE, title_id:
 
     panel_message = await _render_panel(
         target,
-        _title_text(bundle, last_read),
+        _title_text(bundle, last_read, user_id),
         _title_keyboard(bundle, last_read, user_id),
         _pick_bundle_image(bundle),
         edit=edit,
