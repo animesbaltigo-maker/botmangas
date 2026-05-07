@@ -691,6 +691,45 @@
     .reader-mode-name { font-size: 17px; font-weight: 750; }
     .reader-mode-sub { font-size: 12.5px; color: rgba(238,240,255,.58); margin-top: 2px; }
     .reader-mode-cancel { display: block; margin: 14px 4px 0 auto; color: #b9c7ff; font-size: 15px; font-weight: 800; padding: 10px; }
+    .reader-chapter-divider { min-height: 132px; background: #000; display: grid; place-items: center; padding: 28px 20px; border-top: 1px solid rgba(255,255,255,.08); border-bottom: 1px solid rgba(255,255,255,.08); }
+    .reader-chapter-divider-text { text-align: center; color: rgba(245,247,255,.92); font-family: var(--font-b); font-size: 16px; font-weight: 800; line-height: 1.55; letter-spacing: .01em; }
+    .reader-next-sentinel { height: 140px; background: #000; color: rgba(245,247,255,.56); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+
+    /* Reader polish: closer to a native manga reader, quieter and less decorative. */
+    .reader-title-text, .reader-sheet-title, .reader-mode-title { font-family: var(--font-b); letter-spacing: 0; }
+    .reader-top-ui { padding: calc(10px + var(--safe-t)) 14px 44px; background: linear-gradient(180deg, rgba(0,0,0,.78), rgba(0,0,0,.38) 62%, transparent); }
+    .reader-top-inner { max-width: none; }
+    .reader-title-text { font-size: 18px; font-weight: 800; }
+    .reader-sub-text { font-size: 12.5px; color: rgba(245,247,255,.66); }
+    .reader-round-btn { width: 48px; height: 48px; background: rgba(16,17,20,.68); border-color: rgba(255,255,255,.12); }
+    .reader-bottom-ui { padding: 8px 22px calc(0px + var(--safe-b)); background: linear-gradient(0deg, rgba(0,0,0,.92), rgba(0,0,0,.56) 68%, transparent); }
+    .reader-page-nav { grid-template-columns: 58px minmax(0, 1fr) 58px; max-width: 760px; margin-bottom: 12px; }
+    .reader-slider-wrap { height: 54px; background: rgba(20,21,24,.82); border-color: rgba(255,255,255,.10); box-shadow: 0 10px 32px rgba(0,0,0,.5); }
+    .reader-page-num { font-size: 16px; font-weight: 800; }
+    .reader-tool-dock { max-width: 680px; border-radius: 34px 34px 0 0; background: rgba(10,11,14,.86); padding: 10px 28px calc(12px + var(--safe-b)); min-height: 82px; }
+    .reader-tool-btn { height: 54px; border-radius: 20px; }
+    .reader-mode-dialog { align-items: end; place-items: end center; padding: 0 18px calc(22px + var(--safe-b)); }
+    .reader-mode-card { width: min(100%, 520px); border-radius: 30px; padding: 26px 20px 18px; background: rgba(24,25,29,.98); }
+    .reader-mode-title { font-size: 22px; font-weight: 800; margin: 0 8px 14px; }
+    .reader-mode-option { grid-template-columns: 28px minmax(0, 1fr); min-height: 64px; padding: 8px 10px; gap: 18px; }
+    .reader-mode-option > span:last-child { display: none; }
+    .reader-mode-name { display: block; font-size: 17px; line-height: 1.2; font-weight: 750; }
+    .reader-mode-sub { display: block; font-size: 13px; line-height: 1.25; margin-top: 4px; color: rgba(245,247,255,.6); }
+    .reader-radio { width: 22px; height: 22px; border-width: 3px; }
+    .reader-sheet { background: rgba(16,17,20,.98); border-radius: 30px 30px 0 0; }
+    .reader-setting-label { display: block; font-size: 17px; line-height: 1.22; }
+    .reader-setting-sub { display: block; }
+    @media (max-width: 520px) {
+      .reader-bottom-ui { padding-left: 10px; padding-right: 10px; }
+      .reader-page-nav { grid-template-columns: 46px minmax(0, 1fr) 46px; gap: 8px; }
+      .reader-round-btn { width: 44px; height: 44px; }
+      .reader-slider-wrap { height: 50px; grid-template-columns: 28px minmax(0, 1fr) 28px; padding: 0 12px; }
+      .reader-tool-dock { max-width: calc(100vw - 18px); min-height: 74px; padding: 8px 18px calc(10px + var(--safe-b)); }
+      .reader-mode-dialog { padding-left: 10px; padding-right: 10px; }
+      .reader-mode-card { border-radius: 26px; padding: 22px 16px 16px; }
+      .reader-mode-title { font-size: 20px; }
+      .reader-mode-name, .reader-setting-label { font-size: 16px; }
+    }
 
     /* ── EMPTY STATE ── */
     .empty-state { border: 1px solid var(--line); border-radius: var(--r-lg); background: rgba(255,255,255,.02); padding: 28px 20px; text-align: center; color: var(--text2); }
@@ -1072,6 +1111,8 @@ const state = {
   readerControlsVisible: false,
   readerCurrentPage: 1,
   readerUiTimer: null,
+  readerAutoLoading: false,
+  readerLoadedChapters: new Set(),
   loadingLock: 0,
   localProgress: loadLocalProgress(),
   favorites: loadFavorites(),
@@ -2211,11 +2252,21 @@ function attachReaderObserver(payload) {
     const index = Number(visible.target.dataset.index || "0");
     if (index === lastSaved) return;
     lastSaved = index;
-    const tb = state.cache.titles.get(`${payload.title_id}:${state.chapterLang}`);
-    const savedCover = tb?.cover_url || getProgress(payload.title_id)?.cover_url || "";
-    persistProgress({ title_id: payload.title_id, title_name: payload.title, chapter_id: payload.chapter_id, chapter_number: payload.chapter_number, page_index: index, total_pages: images.length, cover_url: savedCover }).catch(() => {});
+    const article = visible.target.closest(".reader-page-item");
+    const titleId = article?.dataset.titleId || payload.title_id;
+    const chapterId = article?.dataset.chapterId || payload.chapter_id;
+    const chapterNumber = article?.dataset.chapterNumber || payload.chapter_number;
+    const titleName = article?.dataset.titleName || payload.title;
+    state.currentTitleId = titleId;
+    state.currentChapterId = chapterId;
+    const tb = state.cache.titles.get(`${titleId}:${state.chapterLang}`);
+    const savedCover = tb?.cover_url || getProgress(titleId)?.cover_url || "";
+    persistProgress({ title_id: titleId, title_name: titleName, chapter_id: chapterId, chapter_number: chapterNumber, page_index: index, total_pages: readerTotalPages(), cover_url: savedCover }).catch(() => {});
   }, { threshold: [0.3, 0.6, 0.9] });
-  images.forEach(img => state.chapterObserver.observe(img));
+  images.forEach(img => {
+    img.dataset.observed = "1";
+    state.chapterObserver.observe(img);
+  });
 }
 
 function isReaderSingleMode() {
@@ -2234,7 +2285,7 @@ function readerModeOptionsHtml() {
     <button class="reader-mode-option ${state.readerMode === mode && (mode !== "webtoon" || index === 0) ? "active" : ""}" data-reader-mode="${mode}">
       <span class="reader-radio"></span>
       <span><span class="reader-mode-name">${esc(name)}</span>${sub ? `<span class="reader-mode-sub">${esc(sub)}</span>` : ""}</span>
-      <span>${mode === "single-ltr" || mode === "single-rtl" ? "↔" : "↧"}</span>
+      <span></span>
     </button>`).join("");
 }
 
@@ -2250,7 +2301,7 @@ function setReaderControls(visible) {
 }
 
 function updateReaderPageUI(page) {
-  const total = document.querySelectorAll(".reader-page-item").length || 1;
+  const total = readerTotalPages();
   const nextPage = Math.max(1, Math.min(Number(page || 1), total));
   state.readerCurrentPage = nextPage;
   if ($$("readerPageNow")) $$("readerPageNow").textContent = String(nextPage);
@@ -2261,7 +2312,7 @@ function updateReaderPageUI(page) {
 }
 
 function jumpReaderPage(page, opts = {}) {
-  const total = document.querySelectorAll(".reader-page-item").length || 1;
+  const total = readerTotalPages();
   const nextPage = Math.max(1, Math.min(Number(page || 1), total));
   updateReaderPageUI(nextPage);
   const target = document.querySelector(`.reader-page-item[data-page="${nextPage}"]`);
@@ -2282,6 +2333,8 @@ function applyReaderMode() {
   shell.classList.toggle("reader-mode-single", isReaderSingleMode());
   shell.classList.toggle("reader-mode-webtoon", !isReaderSingleMode());
   if ($$("readerModeCurrent")) $$("readerModeCurrent").textContent = readerModeLabel();
+  const sentinel = $$("readerNextSentinel");
+  if (sentinel) sentinel.style.display = isReaderSingleMode() ? "none" : "";
 }
 
 function toggleReaderFit() {
@@ -2346,6 +2399,100 @@ function attachReaderControls(payload, pages) {
   });
 }
 
+function chapterLabel(payload) {
+  return `Capitulo ${payload?.chapter_number || "?"}`;
+}
+
+function readerTotalPages() {
+  return document.querySelectorAll(".reader-page-item img").length || 1;
+}
+
+function refreshReaderRangeTotal() {
+  const total = readerTotalPages();
+  if ($$("readerPageRange")) $$("readerPageRange").max = String(total);
+  if ($$("readerPageTotal")) $$("readerPageTotal").textContent = String(total);
+  updateReaderPageUI(Math.min(state.readerCurrentPage, total));
+}
+
+async function appendNextReaderChapter(nextChapterId, previousPayload) {
+  if (!nextChapterId || state.readerAutoLoading || state.readerLoadedChapters.has(nextChapterId)) return;
+  if (isReaderSingleMode()) return;
+  state.readerAutoLoading = true;
+
+  const sentinel = $$("readerNextSentinel");
+  if (sentinel) sentinel.textContent = "Carregando proximo capitulo...";
+
+  try {
+    const key = `${String(nextChapterId)}:${state.chapterLang}`;
+    let payload = state.cache.chapters.get(key);
+    if (!payload) {
+      payload = await api(`/api/chapter/${encodeURIComponent(nextChapterId)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`);
+      state.cache.chapters.set(key, payload);
+    }
+
+    state.readerLoadedChapters.add(payload.chapter_id);
+    const pages = Array.isArray(payload.images) ? payload.images : [];
+    const container = $$("readerPages");
+    const insertBefore = $$("readerNextSentinel");
+    const firstIndex = readerTotalPages() + 1;
+    const html = `
+      <div class="reader-chapter-divider">
+        <div class="reader-chapter-divider-text">
+          <div>Concluido: ${esc(chapterLabel(previousPayload))}</div>
+          <br>
+          <div>Atual: ${esc(chapterLabel(payload))}</div>
+        </div>
+      </div>
+      ${pages.map((img, i) => `
+        <article class="reader-page-item" data-page="${firstIndex + i}" data-title-id="${esc(payload.title_id || "")}" data-chapter-id="${esc(payload.chapter_id || "")}" data-chapter-number="${esc(payload.chapter_number || "")}" data-title-name="${esc(payload.title || "")}">
+          <img src="${esc(img)}" alt="Pagina ${firstIndex + i}" loading="lazy" decoding="async" data-index="${firstIndex + i}" />
+        </article>`).join("")}`;
+
+    const fragment = document.createRange().createContextualFragment(html);
+    container.insertBefore(fragment, insertBefore || null);
+    document.querySelectorAll(".reader-page-item img").forEach(img => {
+      if (img.dataset.observed === "1") return;
+      img.dataset.observed = "1";
+      state.chapterObserver?.observe(img);
+    });
+
+    const nextId = payload.next_chapter?.chapter_id || "";
+    if (insertBefore) {
+      if (nextId) {
+        insertBefore.dataset.nextChapterId = nextId;
+        insertBefore.dataset.previousChapterId = payload.chapter_id || "";
+        insertBefore.textContent = "Continue rolando para o proximo capitulo";
+      } else {
+        insertBefore.remove();
+      }
+    }
+    if ($$("readerNextChapter")) {
+      $$("readerNextChapter").disabled = !nextId;
+      $$("readerNextChapter").onclick = () => nextId && openChapter(nextId);
+    }
+    refreshReaderRangeTotal();
+  } catch (err) {
+    console.error("NEXT CHAPTER:", err);
+    if (sentinel) sentinel.textContent = "Nao foi possivel carregar o proximo capitulo.";
+  } finally {
+    state.readerAutoLoading = false;
+  }
+}
+
+function attachReaderInfinite(payload) {
+  if (isReaderSingleMode()) return;
+  const sentinel = $$("readerNextSentinel");
+  if (!sentinel) return;
+  const observer = new IntersectionObserver((entries) => {
+    const entry = entries.find(item => item.isIntersecting);
+    if (!entry) return;
+    const previousId = sentinel.dataset.previousChapterId || payload.chapter_id || "";
+    const previousPayload = state.cache.chapters.get(`${previousId}:${state.chapterLang}`) || payload;
+    appendNextReaderChapter(sentinel.dataset.nextChapterId || "", previousPayload);
+  }, { rootMargin: "700px 0px", threshold: 0.01 });
+  observer.observe(sentinel);
+}
+
 function renderChapter(payload, options = {}) {
   state.currentChapterId = payload.chapter_id;
   state.currentTitleId = payload.title_id;
@@ -2355,14 +2502,17 @@ function renderChapter(payload, options = {}) {
   const next = payload.next_chapter?.chapter_id || "";
   const savedPage = Number(getProgress(payload.title_id)?.page_index || 1);
   state.readerCurrentPage = Math.max(1, Math.min(savedPage, Math.max(1, pages.length)));
+  state.readerLoadedChapters = new Set([payload.chapter_id]);
+  state.readerAutoLoading = false;
 
   $$("readerWrapper").innerHTML = `
     <div class="reader-shell reader-mode-${isReaderSingleMode() ? "single" : "webtoon"} reader-fit-${esc(state.readerFit)}" id="readerShell">
       <div class="reader-pages" id="readerPages">
         ${pages.map((img, i) => `
-          <article class="reader-page-item ${isReaderSingleMode() && i + 1 === state.readerCurrentPage ? "active" : ""}" data-page="${i + 1}">
+          <article class="reader-page-item ${isReaderSingleMode() && i + 1 === state.readerCurrentPage ? "active" : ""}" data-page="${i + 1}" data-title-id="${esc(payload.title_id || "")}" data-chapter-id="${esc(payload.chapter_id || "")}" data-chapter-number="${esc(payload.chapter_number || "")}" data-title-name="${esc(payload.title || "")}">
             <img src="${esc(img)}" alt="Pagina ${i + 1}" loading="${i < 3 ? "eager" : "lazy"}" decoding="${i < 3 ? "sync" : "async"}" data-index="${i + 1}" />
           </article>`).join("")}
+        ${next && !isReaderSingleMode() ? `<div class="reader-next-sentinel" id="readerNextSentinel" data-next-chapter-id="${esc(next)}">Continue rolando para o proximo capitulo</div>` : ""}
       </div>
       <div class="reader-tap-zone" id="readerTapZone">
         <button class="reader-hit left" id="readerTapLeft" aria-label="Pagina anterior"></button>
@@ -2443,6 +2593,7 @@ function renderChapter(payload, options = {}) {
   syncUrl({ route: "reader", titleId: payload.title_id, chapterId: payload.chapter_id }, options.replaceHistory ?? false);
   attachReaderControls(payload, pages);
   attachReaderObserver(payload);
+  attachReaderInfinite(payload);
   jumpReaderPage(state.readerCurrentPage, { behavior: "auto", save: false });
   setReaderControls(true);
 }
