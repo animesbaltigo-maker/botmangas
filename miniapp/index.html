@@ -291,7 +291,7 @@
       display: flex; align-items: flex-end;
       border: 1px solid var(--line); box-shadow: var(--shadow-lg);
     }
-    .hero-bg { position: absolute; inset: 0; background-size: cover; background-position: center top; transition: transform .7s var(--ease); }
+    .hero-bg { position: absolute; inset: 0; background-size: cover; background-position: center top; transition: transform .7s var(--ease), opacity .25s var(--ease); }
     .hero-banner:hover .hero-bg { transform: scale(1.03); }
     .hero-grad {
       position: absolute; inset: 0;
@@ -303,6 +303,12 @@
     .hero-title { font-family: var(--font-d); font-size: clamp(22px, 6vw, 44px); font-weight: 800; line-height: 1.0; letter-spacing: -.03em; margin-bottom: 10px; text-wrap: balance; }
     .hero-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
     .hero-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .hero-dots { display: flex; gap: 6px; margin-top: 16px; }
+    .hero-dot {
+      width: 18px; height: 4px; border: 0; border-radius: 999px;
+      background: rgba(255,255,255,.3); padding: 0; transition: all .2s var(--ease);
+    }
+    .hero-dot.active { width: 34px; background: var(--brand); }
 
     /* ── TAGS ── */
     .tag-pill {
@@ -1082,6 +1088,7 @@
           </button>
           <button class="btn btn-ghost" id="heroSecondaryBtn">Capítulos recentes</button>
         </div>
+        <div class="hero-dots" id="heroDots"></div>
       </div>
     </section>
 
@@ -1104,11 +1111,12 @@
         <input id="homeSearchInput" type="search" placeholder="Busque um mangá pelo nome..." autocomplete="off" />
       </div>
       <div class="chip-row">
-        <button class="chip" onclick="jumpTo('featuredSection')">✨ Destaques</button>
-        <button class="chip" onclick="jumpTo('popularSection')">🔥 Populares</button>
-        <button class="chip" onclick="jumpTo('recentTitlesSection')">🕐 Recentes</button>
-        <button class="chip" onclick="jumpTo('latestSection')">🔄 Atualizados</button>
-        <button class="chip" onclick="jumpTo('recentChaptersSection')">🆕 Novos caps</button>
+        <button class="chip" onclick="jumpTo('featuredSection')">Banners</button>
+        <button class="chip" onclick="jumpTo('recommendedSection')">Recomendados</button>
+        <button class="chip" onclick="jumpTo('topViewedSection')">Mais visualizados</button>
+        <button class="chip" onclick="jumpTo('latestUpdatesSection')">Atualizacoes PT-BR</button>
+        <button class="chip" onclick="jumpTo('recentReadSection')">Lidos recentemente</button>
+        <button class="chip" onclick="jumpTo('popularSeasonSection')">Temporada</button>
       </div>
     </section>
 
@@ -1128,37 +1136,44 @@
 
     <section class="section" id="featuredSection">
       <div class="section-head">
-        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Destaques</div><div class="section-count" id="featuredCount">Carregando...</div></div></div>
+        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Banners em destaque</div><div class="section-count" id="featuredCount">Carregando...</div></div></div>
       </div>
       <div id="featuredGrid"></div>
     </section>
 
-    <section class="section" id="popularSection">
+    <section class="section" id="recommendedSection">
       <div class="section-head">
-        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Populares</div><div class="section-count" id="popularCount">Carregando...</div></div></div>
+        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Titulos recomendados</div><div class="section-count" id="recommendedCount">Carregando...</div></div></div>
       </div>
-      <div id="popularGrid"></div>
+      <div id="recommendedGrid"></div>
     </section>
 
-    <section class="section" id="recentTitlesSection">
+    <section class="section" id="topViewedSection">
       <div class="section-head">
-        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Recentes</div><div class="section-count">Últimas obras adicionadas</div></div></div>
+        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Titulos mais visualizados</div><div class="section-count" id="topViewedCount">Carregando...</div></div></div>
       </div>
-      <div id="recentTitlesGrid"></div>
+      <div id="topViewedGrid"></div>
     </section>
 
-    <section class="section" id="latestSection">
+    <section class="section" id="latestUpdatesSection">
       <div class="section-head">
-        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Atualizados</div><div class="section-count">Mangás com atividade recente</div></div></div>
+        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Ultimas atualizacoes</div><div class="section-count">Capitulos filtrados em PT-BR</div></div></div>
       </div>
-      <div id="latestGrid"></div>
+      <div id="latestUpdatesGrid"></div>
     </section>
 
-    <section class="section" id="recentChaptersSection">
+    <section class="section" id="recentReadSection">
       <div class="section-head">
-        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Novos capítulos</div><div class="section-count">Leituras fresquinhas</div></div></div>
+        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Capitulos lidos recentemente</div><div class="section-count">Obras com leitura recente no catalogo</div></div></div>
       </div>
-      <div id="recentChaptersGrid"></div>
+      <div id="recentReadGrid"></div>
+    </section>
+
+    <section class="section" id="popularSeasonSection">
+      <div class="section-head">
+        <div class="section-label"><div class="section-accent"></div><div><div class="section-title">Popular nesta temporada</div><div class="section-count" id="popularSeasonCount">Carregando...</div></div></div>
+      </div>
+      <div id="popularSeasonGrid"></div>
     </section>
   </main>
 
@@ -1347,6 +1362,9 @@ const state = {
   readerAutoScroll: loadReaderAutoScroll(),
   readerAutoScrollTimer: null,
   readerLoadedChapters: new Set(),
+  heroSlides: [],
+  heroIndex: 0,
+  heroTimer: null,
   loadingLock: 0,
   localProgress: loadLocalProgress(),
   favorites: loadFavorites(),
@@ -2165,29 +2183,82 @@ function renderContinueSection() {
   });
 }
 
+function renderHeroSlide(index = 0) {
+  const slides = state.heroSlides || [];
+  if (!slides.length) return;
+
+  const safeIndex = ((index % slides.length) + slides.length) % slides.length;
+  state.heroIndex = safeIndex;
+  const hero = slides[safeIndex];
+  const title = hero.display_title || hero.title || "Descubra mangas";
+  const bg = hero.background_url || hero.cover_url || "";
+  const chapter = hero.chapter_number || hero.latest_chapter || "";
+  const status = hero.status || "Atualizado";
+
+  $$("heroTitle").innerHTML = `${esc(title)}<br>no catalogo.`;
+  $$("heroBg").style.opacity = "0.35";
+  window.setTimeout(() => {
+    $$("heroBg").style.backgroundImage = bg ? `url("${bg}")` : "none";
+    $$("heroBg").style.opacity = "1";
+  }, 120);
+  $$("heroMeta").innerHTML = `
+    <span class="tag-pill live">${esc(status)}</span>
+    ${chapter ? `<span class="tag-pill">Cap. ${esc(chapter)}</span>` : ""}
+    <span class="tag-pill new">Destaque</span>
+  `;
+  $$("heroPrimaryBtn").onclick = () => openTitle(hero.title_id);
+
+  const dots = $$("heroDots");
+  if (dots) {
+    dots.innerHTML = slides.slice(0, 8).map((_, dotIndex) =>
+      `<button class="hero-dot ${dotIndex === safeIndex ? "active" : ""}" aria-label="Banner ${dotIndex + 1}" data-hero-index="${dotIndex}"></button>`
+    ).join("");
+    dots.querySelectorAll(".hero-dot").forEach(dot => {
+      dot.addEventListener("click", () => {
+        renderHeroSlide(Number(dot.dataset.heroIndex || 0));
+        startHeroCarousel(slides);
+      });
+    });
+  }
+}
+
+function startHeroCarousel(items = []) {
+  const slides = (items || []).filter(item => item?.title_id && (item.background_url || item.cover_url)).slice(0, 8);
+  if (state.heroTimer) {
+    clearInterval(state.heroTimer);
+    state.heroTimer = null;
+  }
+  state.heroSlides = slides;
+  if (!slides.length) return;
+
+  renderHeroSlide(Math.min(state.heroIndex || 0, slides.length - 1));
+  if (slides.length > 1) {
+    state.heroTimer = setInterval(() => renderHeroSlide((state.heroIndex || 0) + 1), 5200);
+  }
+}
+
 function renderHome(data) {
   const featured = data?.featured || [];
-  const popular = data?.popular || [];
-  const recentTitles = data?.recent_titles || [];
-  const latestUpdated = data?.latest_updated || data?.latest_titles || [];
-  const recentChapters = data?.recent_chapters || [];
+  const recommended = data?.recommended || data?.recommendations || [];
+  const topViewed = data?.top_viewed || data?.popular || [];
+  const latestUpdates = data?.latest_updates || data?.recent_chapters || data?.latest_updated || data?.latest_titles || [];
+  const recentRead = data?.recent_chapter_read || data?.recent_titles || [];
+  const popularSeason = data?.popular_season || data?.popular || [];
 
-  if (featured.length) {
-    const hero = featured[0];
-    $$("heroTitle").innerHTML = `${esc(hero.display_title || hero.title || "Descubra mangás")}<br>e leia sem parar.`;
-    $$("heroBg").style.backgroundImage = (hero.background_url || hero.cover_url)
-      ? `url("${hero.background_url || hero.cover_url}")` : "none";
-    $$("heroPrimaryBtn").onclick = () => openTitle(hero.title_id);
-  }
+  startHeroCarousel(featured);
+  $$("heroSecondaryBtn").onclick = () => jumpTo("latestUpdatesSection");
 
   renderGrid("featuredGrid", featured, { emptyText: "Sem destaques agora." });
-  renderGrid("popularGrid", popular, { emptyText: "Sem populares agora." });
-  renderGrid("recentTitlesGrid", recentTitles, { emptyText: "Sem títulos recentes agora." });
-  renderGrid("latestGrid", latestUpdated, { emptyText: "Sem atualizações agora." });
-  renderGrid("recentChaptersGrid", recentChapters, { emptyText: "Sem capítulos recentes agora." });
+  renderGrid("recommendedGrid", recommended, { emptyText: "Sem recomendados agora." });
+  renderGrid("topViewedGrid", topViewed, { emptyText: "Sem visualizados agora." });
+  renderGrid("latestUpdatesGrid", latestUpdates, { emptyText: "Sem atualizacoes PT-BR agora." });
+  renderGrid("recentReadGrid", recentRead, { emptyText: "Sem leituras recentes agora." });
+  renderGrid("popularSeasonGrid", popularSeason, { emptyText: "Sem populares da temporada agora." });
 
   $$("featuredCount").textContent = `${featured.length} itens`;
-  $$("popularCount").textContent = `${popular.length} itens`;
+  $$("recommendedCount").textContent = `${recommended.length} itens`;
+  $$("topViewedCount").textContent = `${topViewed.length} itens`;
+  $$("popularSeasonCount").textContent = `${popularSeason.length} itens`;
 
   renderContinueSection();
   updateNavBadge();
@@ -2197,10 +2268,10 @@ function renderHome(data) {
 }
 
 async function loadHome(force = false) {
-  showLoading("Abrindo catálogo", "Carregando destaques, populares e novos capítulos.");
+  showLoading("Abrindo catalogo", "Carregando banners, recomendados e atualizacoes PT-BR.");
   try {
     if (!force && state.cache.home) { renderHome(state.cache.home); return; }
-    ["featuredGrid","popularGrid","recentTitlesGrid","latestGrid","recentChaptersGrid"].forEach(id => {
+    ["featuredGrid","recommendedGrid","topViewedGrid","latestUpdatesGrid","recentReadGrid","popularSeasonGrid"].forEach(id => {
       const el = $$(id); if (el) el.innerHTML = skeletonGrid(6);
     });
     const data = await api("/api/home");
@@ -2208,7 +2279,7 @@ async function loadHome(force = false) {
     renderHome(data);
   } catch (err) {
     console.error("HOME:", err);
-    ["featuredGrid","popularGrid","recentTitlesGrid","latestGrid","recentChaptersGrid"].forEach(id => {
+    ["featuredGrid","recommendedGrid","topViewedGrid","latestUpdatesGrid","recentReadGrid","popularSeasonGrid"].forEach(id => {
       const el = $$(id); if (el) el.innerHTML = emptyState("Não foi possível carregar. Tente novamente.");
     });
     toast("Erro ao carregar o catálogo.");
@@ -3355,8 +3426,8 @@ $$("topbarSearchInput").addEventListener("keydown", e => {
   if (e.key === "Escape") clearSearch();
 });
 
-$$("heroPrimaryBtn").addEventListener("click", () => jumpTo("featuredSection"));
-$$("heroSecondaryBtn").addEventListener("click", () => jumpTo("recentChaptersSection"));
+$$("heroPrimaryBtn").onclick = () => jumpTo("featuredSection");
+$$("heroSecondaryBtn").onclick = () => jumpTo("latestUpdatesSection");
 
 setInterval(() => { state.cache.home = null; }, 3 * 60 * 1000);
 
