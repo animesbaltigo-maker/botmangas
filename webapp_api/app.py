@@ -1445,6 +1445,15 @@ async def api_section(
     page: int = Query(1, ge=1),
     time: str = Query(RECENT_CHAPTER_TIME),
 ):
+    async def safe_title_search(search_type: str, fetch_limit: int, **extra: Any) -> list[dict[str, Any]]:
+        try:
+            return await asyncio.wait_for(
+                get_title_search(search_type, limit=fetch_limit, page=page, **extra),
+                timeout=9.0,
+            )
+        except Exception:
+            return []
+
     async def producer() -> dict[str, Any]:
         if section_name == "latest_updates":
             items = await get_recent_chapter_updates(limit=max(limit * page, 12))
@@ -1478,7 +1487,7 @@ async def api_section(
                 )
             except Exception:
                 fallback_type = {"manga": "getFeatured", "manhwa": "getRecommend", "manhua": "getPopular"}[section_name]
-                items = await get_title_search(fallback_type, limit=max(limit * page + 1, 16), page=page)
+                items = await safe_title_search(fallback_type, max(limit * page + 1, 16))
             clean = [_public_title_item(item) for item in items if _has_real_chapter(item)]
             return _paginate_items(clean, page, limit)
 
@@ -1497,7 +1506,7 @@ async def api_section(
             raise HTTPException(status_code=404, detail="Seção não encontrada.")
 
         extra = {"search_time": time or RECENT_CHAPTER_TIME} if search_type in {"getRecentRead", "getRecentChapterRead"} else {}
-        items = await get_title_search(search_type, limit=max(limit * page + 1, 16), page=page, **extra)
+        items = await safe_title_search(search_type, max(limit * page + 1, 16), **extra)
         clean = [_public_title_item(item) for item in items if _has_real_chapter(item)]
         if section_name in {"latest_titles", "recent_titles", "recent_chapter_read"}:
             clean.sort(
