@@ -1156,8 +1156,20 @@ def _normalize_catalog_item(item: dict[str, Any]) -> dict[str, Any]:
         "followers": _clean(item.get("followers") or item.get("bookmark")),
         "views": _clean(item.get("views")),
         "updated_at": _clean(item.get("updated_at") or item.get("updatedAt") or item.get("latest")),
-        "language": _clean(item.get("language") or item.get("lang") or item.get("language_code")).lower(),
-        "language_flag": _absolute_url(item.get("languageFlag") or item.get("flag")),
+        "language": _clean(
+            item.get("language")
+            or item.get("lang")
+            or item.get("language_code")
+            or item.get("chapter_language")
+            or item.get("chapterLanguage")
+        ).lower(),
+        "language_flag": _absolute_url(
+            item.get("languageFlag")
+            or item.get("language_flag")
+            or item.get("chapterLanguageFlag")
+            or item.get("chapter_language_flag")
+            or item.get("flag")
+        ),
         "latest_chapter": _clean(
             item.get("chapter")
             or item.get("latest_chapter")
@@ -2400,6 +2412,26 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
         normalized = _normalize_lang(value)
         return normalized in {"pt-br", "ptbr", "pt"}
 
+    def _is_ptbr_item(item: dict[str, Any]) -> bool:
+        language = _normalize_lang(
+            item.get("language")
+            or item.get("language_code")
+            or item.get("chapter_language")
+            or item.get("chapterLanguage")
+            or item.get("lang")
+        )
+        if language:
+            return _is_ptbr_lang(language)
+
+        language_flag = _clean(
+            item.get("language_flag")
+            or item.get("languageFlag")
+            or item.get("chapter_language_flag")
+            or item.get("chapterLanguageFlag")
+            or item.get("flag")
+        ).lower()
+        return "br.webp" in language_flag or "/br." in language_flag or "flags/br" in language_flag
+
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -2408,6 +2440,10 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
             "getRecentlyUpdatedChapter",
             limit=batch_size,
             page=page,
+            chapter_language=PREFERRED_CHAPTER_LANG,
+            chapterLanguage=PREFERRED_CHAPTER_LANG,
+            language=PREFERRED_CHAPTER_LANG,
+            lang=PREFERRED_CHAPTER_LANG,
         )
         if not raw_items:
             break
@@ -2420,10 +2456,25 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
             chapter_number = item.get("latest_chapter") or item.get("chapter_number") or ""
             chapter_data: dict[str, Any] | None = None
 
-            language = _normalize_lang(item.get("language"))
-            needs_detail_lookup = not _is_ptbr_lang(language)
-            if language and not _is_ptbr_lang(language):
+            language = _normalize_lang(
+                item.get("language")
+                or item.get("chapter_language")
+                or item.get("chapterLanguage")
+                or item.get("language_code")
+                or item.get("lang")
+            )
+            has_language_hint = bool(language) or bool(
+                _clean(
+                    item.get("language_flag")
+                    or item.get("languageFlag")
+                    or item.get("chapter_language_flag")
+                    or item.get("chapterLanguageFlag")
+                    or item.get("flag")
+                )
+            )
+            if has_language_hint and not _is_ptbr_item(item):
                 continue
+            needs_detail_lookup = not has_language_hint
 
             if (not chapter_id or not chapter_number or not title_id or not title_url or needs_detail_lookup) and (chapter_url or chapter_id):
                 try:
