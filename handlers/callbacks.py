@@ -473,11 +473,14 @@ def _title_keyboard(bundle: dict, last_read: dict | None = None, user_id: int | 
                         user_id=user_id,
                     )
                 ),
-            ),
-            InlineKeyboardButton(_title_button_label("offline", user_id), callback_data=f"mb|offline|{title_id}"),
+            )
+        ])
+        rows.append([
+            InlineKeyboardButton(_title_button_label("offline", user_id), callback_data=f"mb|offline|{title_id}")
         ])
 
     return InlineKeyboardMarkup(rows)
+
 
 
 def _language_text(bundle: dict, user_id: int | None) -> str:
