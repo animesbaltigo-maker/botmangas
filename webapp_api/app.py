@@ -8,13 +8,15 @@ import json
 import math
 import os
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urljoin
 from threading import Lock
 
 import httpx
+from bs4 import BeautifulSoup
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -41,6 +43,7 @@ from config import (
     PDF_PROTECT_CONTENT,
     PREFERRED_CHAPTER_LANG,
     RECENT_CHAPTER_TIME,
+    WEBAPP_BASE_URL,
     WEBAPP_CORS_ORIGINS,
     WEBAPP_TRUST_QUERY_USER_ID,
 )
@@ -103,7 +106,10 @@ from services.profile_store import (
 MINIAPP_DIR = BASE_DIR / "miniapp"
 AFFILIATE_APP_DIR = MINIAPP_DIR / "affiliate"
 PROGRESS_PATH = Path(DATA_DIR) / "miniapp_progress.json"
+NOTIFICATIONS_PATH = Path(DATA_DIR) / "miniapp_notifications.json"
 _PROGRESS_LOCK = Lock()
+_NOTIFICATIONS_LOCK = Lock()
+_NOTIFICATION_TASK: asyncio.Task | None = None
 
 app = FastAPI(
     title="Mangas Baltigo API",
@@ -125,13 +131,24 @@ init_affiliate_db()
 
 @app.on_event("startup")
 async def _startup_cache_cleanup() -> None:
+    global _NOTIFICATION_TASK
     first_delay = 0 if CACHE_CLEANUP_STARTUP else CACHE_CLEANUP_INTERVAL_SECONDS
     start_cache_cleanup_loop(first_delay=first_delay)
+    if _NOTIFICATION_TASK is None or _NOTIFICATION_TASK.done():
+        _NOTIFICATION_TASK = asyncio.create_task(_notification_loop())
 
 
 @app.on_event("shutdown")
 async def _shutdown_cache_cleanup() -> None:
+    global _NOTIFICATION_TASK
     await stop_cache_cleanup_loop()
+    if _NOTIFICATION_TASK:
+        _NOTIFICATION_TASK.cancel()
+        try:
+            await _NOTIFICATION_TASK
+        except asyncio.CancelledError:
+            pass
+        _NOTIFICATION_TASK = None
 
 
 class ProgressPayload(BaseModel):
@@ -172,6 +189,19 @@ class FavoritePayload(BaseModel):
     added_at: int | float | None = None
     updated_at: int | float | None = None
     favorite: bool = True
+
+
+class TitleNotificationPayload(BaseModel):
+    user_id: str = ""
+    init_data: str = ""
+    title_id: str = Field(min_length=1)
+    enabled: bool = True
+    language: str = PREFERRED_CHAPTER_LANG
+    title: str = ""
+    latest_chapter: str = ""
+    latest_chapter_id: str = ""
+    chapter_count: int = 0
+    cover_url: str = ""
 
 
 class PreferencesPayload(BaseModel):
@@ -410,6 +440,128 @@ def _save_progress(data: dict[str, dict[str, Any]]) -> None:
 
 def _progress_key(user_id: str, title_id: str) -> str:
     return f"{user_id}:{title_id}"
+
+
+def _load_notifications() -> dict[str, dict[str, Any]]:
+    if not NOTIFICATIONS_PATH.exists():
+        return {}
+    try:
+        raw = json.loads(NOTIFICATIONS_PATH.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_notifications(data: dict[str, dict[str, Any]]) -> None:
+    NOTIFICATIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = NOTIFICATIONS_PATH.with_suffix(NOTIFICATIONS_PATH.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp_path, NOTIFICATIONS_PATH)
+
+
+def _notification_key(user_id: str, title_id: str, language: str) -> str:
+    return f"{user_id}:{title_id}:{normalize_language(language) or PREFERRED_CHAPTER_LANG}"
+
+
+def _miniapp_chapter_url(title_id: str, chapter_id: str, language: str) -> str:
+    query = f"?route=reader&page=reader&title_id={title_id}&chapter_id={chapter_id}&lang={language}"
+    if WEBAPP_BASE_URL:
+        return f"{WEBAPP_BASE_URL}/{query}"
+    if BOT_USERNAME:
+        return f"https://t.me/{BOT_USERNAME}?start=title_{title_id}"
+    return query
+
+
+def _latest_chapter_from_bundle(bundle: dict[str, Any], language: str) -> dict[str, Any]:
+    chapters = flatten_chapters(bundle.get("chapters") or [], language)
+    if chapters:
+        return chapters[0]
+    latest = bundle.get("latest_chapter") or {}
+    return latest if isinstance(latest, dict) else {}
+
+
+async def _send_chapter_notification(user_id: str, entry: dict[str, Any], latest: dict[str, Any]) -> None:
+    if not BOT_TOKEN:
+        return
+    title = entry.get("title") or latest.get("title") or "Obra"
+    chapter_number = latest.get("chapter_number") or latest.get("number") or entry.get("latest_chapter") or "novo"
+    chapter_id = latest.get("chapter_id") or entry.get("latest_chapter_id") or ""
+    language = normalize_language(entry.get("language")) or PREFERRED_CHAPTER_LANG
+    url = _miniapp_chapter_url(entry.get("title_id") or "", chapter_id, language)
+    text = (
+        "🔔 <b>Novo capítulo disponível</b>\n\n"
+        f"<b>{html.escape(str(title))}</b>\n"
+        f"Capítulo: <code>{html.escape(str(chapter_number))}</code>\n"
+        f"Idioma: <b>{html.escape(language.upper())}</b>"
+    )
+    reply_markup = json.dumps(
+        {"inline_keyboard": [[{"text": "Abrir capítulo", "url": url}]]},
+        ensure_ascii=False,
+    )
+    try:
+        await _telegram_api(
+            "sendMessage",
+            data={
+                "chat_id": str(user_id),
+                "text": text,
+                "parse_mode": "HTML",
+                "reply_markup": reply_markup,
+                "disable_web_page_preview": "true",
+            },
+        )
+    except Exception as error:
+        print("[WEBAPP][NOTIFICATION_SEND_FAIL]", user_id, entry.get("title_id"), repr(error))
+
+
+async def _check_title_notification(key: str, entry: dict[str, Any], data: dict[str, dict[str, Any]]) -> None:
+    if not entry.get("enabled"):
+        return
+    user_id = str(entry.get("user_id") or "").strip()
+    title_id = str(entry.get("title_id") or "").strip()
+    language = normalize_language(entry.get("language")) or PREFERRED_CHAPTER_LANG
+    if not user_id or not title_id:
+        return
+    try:
+        bundle = await asyncio.wait_for(get_title_bundle(title_id, language), timeout=25.0)
+        latest = _latest_chapter_from_bundle(bundle, language)
+    except Exception as error:
+        print("[WEBAPP][NOTIFICATION_CHECK_FAIL]", title_id, repr(error))
+        return
+    latest_id = latest.get("chapter_id") or ""
+    latest_number = latest.get("chapter_number") or latest.get("number") or ""
+    if not latest_id:
+        return
+    previous_id = entry.get("latest_chapter_id") or ""
+    last_notified = entry.get("last_notified_chapter_id") or ""
+    entry["title"] = entry.get("title") or bundle.get("title") or ""
+    entry["latest_chapter"] = latest_number
+    entry["chapter_count"] = len(flatten_chapters(bundle.get("chapters") or [], language))
+    if previous_id and latest_id != previous_id and latest_id != last_notified:
+        await _send_chapter_notification(user_id, entry, latest)
+        entry["last_notified_chapter_id"] = latest_id
+    entry["latest_chapter_id"] = latest_id
+    entry["language"] = language
+    entry["checked_at"] = int(time.time())
+    data[key] = entry
+
+
+async def _notification_loop() -> None:
+    await asyncio.sleep(20)
+    while True:
+        try:
+            with _NOTIFICATIONS_LOCK:
+                data = _load_notifications()
+            items = [(key, value) for key, value in data.items() if isinstance(value, dict) and value.get("enabled")]
+            for key, entry in items[:250]:
+                await _check_title_notification(key, entry, data)
+                await asyncio.sleep(0.35)
+            with _NOTIFICATIONS_LOCK:
+                _save_notifications(data)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            print("[WEBAPP][NOTIFICATION_LOOP_FAIL]", repr(error))
+        await asyncio.sleep(300)
 
 
 def _public_last_read(entry: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -1525,6 +1677,149 @@ async def api_section(
         page=page,
         time=time,
     )
+
+
+@app.get("/api/news/manga")
+async def api_manga_news(limit: int = Query(12, ge=1, le=30)):
+    async def producer() -> dict[str, Any]:
+        url = "https://www.crunchyroll.com/pt-br/news/manga"
+        timeout = httpx.Timeout(15.0, connect=8.0, read=15.0, write=8.0, pool=8.0)
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(url, headers={"User-Agent": "Mozilla/5.0 BaltigoMiniApp/1.0"})
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        items: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        candidates = soup.find_all(["article", "a"], limit=180)
+        for node in candidates:
+            link_node = node if getattr(node, "name", "") == "a" else node.find("a", href=True)
+            href = (link_node.get("href") if link_node else "") or ""
+            if "/news/" not in href:
+                continue
+            item_url = urljoin(url, href)
+            if item_url in seen:
+                continue
+            title_node = node.find(["h1", "h2", "h3"]) if getattr(node, "find", None) else None
+            title = " ".join((title_node.get_text(" ", strip=True) if title_node else link_node.get_text(" ", strip=True)).split())
+            if not title or len(title) < 12:
+                continue
+            summary_node = node.find("p") if getattr(node, "find", None) else None
+            summary = " ".join((summary_node.get_text(" ", strip=True) if summary_node else "").split())
+            image = ""
+            img_node = node.find("img") if getattr(node, "find", None) else None
+            if img_node:
+                image = img_node.get("src") or img_node.get("data-src") or img_node.get("data-thumbnail") or ""
+                if not image and img_node.get("srcset"):
+                    image = str(img_node.get("srcset")).split(",")[0].strip().split(" ")[0]
+            time_node = node.find("time") if getattr(node, "find", None) else None
+            published = (time_node.get("datetime") if time_node else "") or (time_node.get_text(" ", strip=True) if time_node else "")
+            tag_nodes = node.find_all(["span", "li"], limit=12) if getattr(node, "find_all", None) else []
+            tags = []
+            for tag_node in tag_nodes:
+                text = " ".join(tag_node.get_text(" ", strip=True).split())
+                if 2 <= len(text) <= 28 and text.lower() not in title.lower():
+                    tags.append(text)
+                if len(tags) >= 4:
+                    break
+            seen.add(item_url)
+            items.append(
+                {
+                    "id": hashlib.sha1(item_url.encode("utf-8")).hexdigest()[:16],
+                    "title": title,
+                    "summary": summary,
+                    "content": summary,
+                    "image": urljoin(url, image) if image else "",
+                    "published_at": published,
+                    "tags": tags,
+                    "url": item_url,
+                }
+            )
+            if len(items) >= limit:
+                break
+        if not items:
+            feed_url = (
+                "https://news.google.com/rss/search"
+                "?q=site%3Acrunchyroll.com%2Fpt-br%2Fnews%20%22Mang%C3%A1%22"
+                "&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+            )
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+                feed_response = await client.get(feed_url, headers={"User-Agent": "Mozilla/5.0 BaltigoMiniApp/1.0"})
+            feed_response.raise_for_status()
+            root = ET.fromstring(feed_response.text)
+            for item_node in root.findall("./channel/item"):
+                title = " ".join((item_node.findtext("title") or "").replace(" - Crunchyroll", "").split())
+                item_url = item_node.findtext("link") or ""
+                published = item_node.findtext("pubDate") or ""
+                description_html = item_node.findtext("description") or ""
+                summary = " ".join(BeautifulSoup(description_html, "html.parser").get_text(" ", strip=True).split())
+                summary = summary.replace(" - Crunchyroll", "").replace(" Crunchyroll", "").strip()
+                if not title or not item_url:
+                    continue
+                items.append(
+                    {
+                        "id": hashlib.sha1(item_url.encode("utf-8")).hexdigest()[:16],
+                        "title": title,
+                        "summary": summary,
+                        "content": summary,
+                        "image": "",
+                        "published_at": published,
+                        "tags": ["Mangá"],
+                        "url": item_url,
+                    }
+                )
+                if len(items) >= limit:
+                    break
+        return {"ok": True, "items": items, "updated_at": int(time.time())}
+
+    try:
+        return await _cached("manga_news", 900, producer, limit=limit)
+    except Exception as exc:
+        LOGGER.warning("manga news fetch failed: %s", exc)
+        return {"ok": False, "items": [], "updated_at": int(time.time()), "error": "news_unavailable"}
+
+
+@app.get("/api/notifications/title")
+async def api_get_title_notification(
+    request: Request,
+    user_id: str = Query(""),
+    title_id: str = Query(...),
+    language: str = Query(PREFERRED_CHAPTER_LANG),
+):
+    safe_user_id = _authenticated_user_id(request, user_id)
+    lang = normalize_language(language) or PREFERRED_CHAPTER_LANG
+    with _NOTIFICATIONS_LOCK:
+        data = _load_notifications()
+    entry = data.get(_notification_key(safe_user_id, title_id, lang)) or {}
+    return {"ok": True, "enabled": bool(entry.get("enabled")), "item": entry}
+
+
+@app.post("/api/notifications/title")
+async def api_set_title_notification(request: Request, payload: TitleNotificationPayload):
+    user_id = _authenticated_user_id(request, payload.user_id, payload.init_data)
+    lang = normalize_language(payload.language) or PREFERRED_CHAPTER_LANG
+    key = _notification_key(user_id, payload.title_id, lang)
+    with _NOTIFICATIONS_LOCK:
+        data = _load_notifications()
+        current = data.get(key) or {}
+        if payload.enabled:
+            data[key] = {
+                **current,
+                "user_id": user_id,
+                "title_id": payload.title_id,
+                "enabled": True,
+                "language": lang,
+                "title": payload.title or current.get("title") or "",
+                "latest_chapter": payload.latest_chapter or current.get("latest_chapter") or "",
+                "latest_chapter_id": payload.latest_chapter_id or current.get("latest_chapter_id") or "",
+                "last_notified_chapter_id": current.get("last_notified_chapter_id") or payload.latest_chapter_id or "",
+                "chapter_count": payload.chapter_count or current.get("chapter_count") or 0,
+                "cover_url": payload.cover_url or current.get("cover_url") or "",
+                "updated_at": int(time.time()),
+            }
+        else:
+            data[key] = {**current, "user_id": user_id, "title_id": payload.title_id, "language": lang, "enabled": False, "updated_at": int(time.time())}
+        _save_notifications(data)
+    return {"ok": True, "enabled": bool(payload.enabled), "item": data.get(key) or {}}
 
 
 @app.get("/api/title/{title_id}")
