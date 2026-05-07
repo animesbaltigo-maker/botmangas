@@ -399,6 +399,46 @@
     }
     @keyframes shimmer { 100% { transform: translateX(100%); } }
 
+    .auth-recovery {
+      display: none;
+      min-height: min(680px, calc(100dvh - 48px - var(--safe-t) - var(--safe-b)));
+      place-items: center;
+      padding: 18px;
+    }
+    body.auth-blocked .layout,
+    body.auth-blocked .mobile-top,
+    body.auth-blocked .mobile-nav,
+    body.auth-blocked .onboarding { display: none !important; }
+    body.auth-blocked .auth-recovery { display: grid; }
+    .auth-card {
+      width: min(720px, 100%);
+      border-radius: 30px;
+      padding: clamp(22px, 5vw, 38px);
+      border: 1px solid rgba(255,255,255,.15);
+      background:
+        radial-gradient(circle at 78% 0%, rgba(0,212,255,.18), transparent 300px),
+        radial-gradient(circle at 12% 0%, rgba(139,92,246,.22), transparent 320px),
+        linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.045));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(24px);
+    }
+    .auth-icon {
+      width: 62px; height: 62px; border-radius: 22px;
+      display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      box-shadow: 0 18px 42px rgba(79,125,255,.28);
+      margin-bottom: 18px;
+    }
+    .auth-title { margin: 0; font-size: clamp(28px, 6vw, 46px); line-height: .98; letter-spacing: -.05em; }
+    .auth-copy { color: var(--text2); line-height: 1.65; margin: 14px 0 0; }
+    .auth-steps { display: grid; gap: 10px; margin: 20px 0; }
+    .auth-step { display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 12px; align-items: start; padding: 13px; border-radius: 18px; background: rgba(255,255,255,.055); border: 1px solid var(--line); }
+    .auth-step b { display: block; margin-bottom: 3px; }
+    .auth-step span:first-child { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 12px; background: rgba(79,125,255,.18); font-weight: 950; color: #cbd5ff; }
+    .auth-actions { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+    .auth-debug { margin-top: 14px; color: var(--text3); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+    @media (max-width: 640px) { .auth-actions { grid-template-columns: 1fr; } }
+
     .empty {
       display: grid; place-items: center; text-align: center;
       min-height: 180px;
@@ -410,7 +450,7 @@
     .toast {
       position: fixed;
       left: 50%;
-      bottom: calc(18px + var(--safe-b));
+      bottom: calc(96px + var(--safe-b));
       transform: translateX(-50%) translateY(24px);
       z-index: 120;
       opacity: 0;
@@ -458,6 +498,23 @@
   </style>
 </head>
 <body>
+  <section class="auth-recovery" id="authRecovery">
+    <article class="auth-card">
+      <div class="auth-icon" data-icon="affiliate"></div>
+      <h1 class="auth-title">Abra pelo Telegram para entrar no painel</h1>
+      <p class="auth-copy">O painel de afiliados precisa confirmar sua conta pelo Telegram MiniApp antes de mostrar saldo, comiss?es e saques. Isso evita que outra pessoa abra um ID aleat?rio e veja dados financeiros.</p>
+      <div class="auth-steps">
+        <div class="auth-step"><span>1</span><div><b>Volte ao bot</b><p class="tiny">Abra o menu do bot ou toque no bot?o abaixo para voltar ao Mang?s Baltigo.</p></div></div>
+        <div class="auth-step"><span>2</span><div><b>Entre pelo bot?o oficial</b><p class="tiny">Use ?Painel de afiliados? dentro do WebApp ou o comando de indica??es no bot.</p></div></div>
+        <div class="auth-step"><span>3</span><div><b>Depois compartilhe seu link</b><p class="tiny">Com a sess?o validada, o painel mostra seu link, QR Code, vendas, garantia e saques.</p></div></div>
+      </div>
+      <div class="auth-actions">
+        <button class="btn primary full" id="authRetryBtn">Tentar novamente</button>
+        <button class="btn full" id="authBotBtn">Abrir bot</button>
+      </div>
+      <div class="auth-debug" id="authDebug"></div>
+    </article>
+  </section>
   <div class="onboarding" id="onboarding">
     <div class="onboarding-shell">
       <section class="onboarding-copy">
@@ -507,8 +564,8 @@
           <button class="nav-btn hidden" data-view="admin" id="adminNav"><span class="nav-ico" data-icon="admin"></span><span>Admin</span></button>
         </nav>
         <div class="side-mini">
-          <strong>Garantia automatica</strong>
-          <span>As comissoes ficam em garantia por 7 dias antes de liberar para saque.</span>
+          <strong>Como funciona</strong>
+          <span>Venda rastreada, comiss?o em garantia por 7 dias e saque via Pix quando bater os requisitos.</span>
         </div>
       </aside>
 
@@ -527,7 +584,7 @@
             <div class="hero-main">
               <span class="pill green">Programa ativo</span>
               <h2 id="heroGreeting">Bem-vindo ao painel Baltigo.</h2>
-              <p id="heroText">Seu link ja esta pronto. Compartilhe, acompanhe conversoes e saque quando suas comissoes passarem pelo periodo de garantia.</p>
+              <p id="heroText">Seu link ? rastre?vel: cada venda feita por ele entra no painel, passa pelo per?odo de garantia e libera para saque quando cumprir os requisitos.</p>
               <div class="progress-wrap">
                 <div class="progress-head"><span id="levelProgressLabel">Progresso para o proximo nivel</span><span id="levelProgressValue">0%</span></div>
                 <div class="progress"><span id="levelBar"></span></div>
@@ -678,7 +735,9 @@
     const user = tg?.initDataUnsafe?.user || {};
     const params = new URLSearchParams(location.search);
     const userId = String(user.id || params.get("user_id") || "");
+    const telegramInitData = tg?.initData || params.get("init_data") || (() => { try { return sessionStorage.getItem("telegramInitData") || ""; } catch (_) { return ""; } })() || "";
     const botUsername = params.get("bot") || "MangasBaltigo_Bot";
+    try { if (telegramInitData) sessionStorage.setItem("telegramInitData", telegramInitData); } catch (_) {}
     const state = {
       summary: null,
       commissions: [],
@@ -714,11 +773,39 @@
       window.__toast = setTimeout(() => el.classList.remove("show"), 2600);
     }
 
+    function authQuery(extra = {}) {
+      const query = new URLSearchParams(extra);
+      if (telegramInitData) query.set("init_data", telegramInitData);
+      return query.toString();
+    }
+
+    function withAuth(path) {
+      if (!telegramInitData) return path;
+      const sep = path.includes("?") ? "&" : "?";
+      return `${path}${sep}init_data=${encodeURIComponent(telegramInitData)}`;
+    }
+
     async function api(path, options = {}) {
-      const response = await fetch(path, options);
+      const headers = new Headers(options.headers || {});
+      if (telegramInitData) headers.set("X-Telegram-Init-Data", telegramInitData);
+      const response = await fetch(withAuth(path), { ...options, headers });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.detail || "Erro na API");
+      if (!response.ok) {
+        const error = new Error(data.detail || "Erro na API");
+        error.status = response.status;
+        error.payload = data;
+        throw error;
+      }
       return data;
+    }
+
+    function showAuthRecovery(reason = "") {
+      document.body.classList.add("auth-blocked");
+      $("authDebug").textContent = `ID detectado: ${userId || "nenhum"} ? initData: ${telegramInitData ? "presente" : "ausente"}${reason ? ` ? ${reason}` : ""}`;
+    }
+
+    function hideAuthRecovery() {
+      document.body.classList.remove("auth-blocked");
     }
 
     function esc(value) {
@@ -788,6 +875,10 @@
 
     function showError(error) {
       console.error(error);
+      if (error?.status === 401 || /MiniApp|Telegram|Autenticacao|Autentica??o/i.test(error?.message || "")) {
+        showAuthRecovery(error.message || "autentica??o necess?ria");
+        return;
+      }
       toast(error.message || "Algo deu errado", "error");
     }
 
@@ -799,10 +890,15 @@
 
     async function loadSummary() {
       if (!userId) {
-        toast("Abra pelo Telegram para identificar sua conta.", "error");
+        showAuthRecovery("sem ID do Telegram");
+        return;
+      }
+      if (!telegramInitData) {
+        showAuthRecovery("sess?o sem initData");
         return;
       }
       state.summary = await api(`/api/affiliate/summary?user_id=${encodeURIComponent(userId)}`);
+      hideAuthRecovery();
       const referral = await api(`/api/affiliate/commissions?user_id=${encodeURIComponent(userId)}&limit=8`).catch(() => ({ items: [] }));
       state.commissions = referral.items || [];
       state.summary.referral = state.summary.referral || {};
@@ -1102,7 +1198,6 @@
     }
 
     function shareLink() {
-      const previewUrl = `${location.origin}/affiliate/share/${encodeURIComponent(userId)}`;
       const text = [
         "📚🔥 MANGÁ OFFLINE CHEGOU NO BALTIGO",
         "",
@@ -1157,11 +1252,11 @@
         `👉 ${refLink()}`,
       ].join("\n");
       if (tg?.openTelegramLink) {
-        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(previewUrl)}&text=${encodeURIComponent(text)}`);
+        tg.openTelegramLink(`https://t.me/share/url?text=${encodeURIComponent(text)}`);
       } else if (navigator.share) {
-        navigator.share({ title: "Baltigo Mangás", text, url: previewUrl }).catch(() => copyText(`${text}\n${previewUrl}`));
+        navigator.share({ title: "Baltigo Mangás", text }).catch(() => copyText(text));
       } else {
-        copyText(`${text}\n${previewUrl}`);
+        copyText(text);
       }
     }
 
@@ -1169,7 +1264,7 @@
       await api("/api/affiliate/pix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, pix_key: $("pixInput").value.trim() }),
+        body: JSON.stringify({ user_id: userId, pix_key: $("pixInput").value.trim(), init_data: telegramInitData }),
       });
       toast("Pix salvo com sucesso");
       await loadSummary();
@@ -1179,7 +1274,7 @@
       await api("/api/affiliate/withdrawals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({ user_id: userId, init_data: telegramInitData }),
       });
       toast("Saque solicitado");
       await Promise.all([loadSummary(), loadWithdrawals()]);
@@ -1196,6 +1291,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             user_id: userId,
+            init_data: telegramInitData,
             full_name: $("accountName").value.trim(),
             email: $("accountEmail").value.trim(),
             phone: $("accountPhone").value.trim(),
@@ -1215,7 +1311,7 @@
       await api(`/api/affiliate/admin/withdrawals/${id}/pay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ admin_user_id: userId }),
+        body: JSON.stringify({ admin_user_id: userId, init_data: telegramInitData }),
       });
       toast("Saque marcado como pago");
       await loadAdmin();
@@ -1225,7 +1321,7 @@
       await api(`/api/affiliate/admin/withdrawals/${id}/refuse`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ admin_user_id: userId, note: "Recusado pelo painel" }),
+        body: JSON.stringify({ admin_user_id: userId, note: "Recusado pelo painel", init_data: telegramInitData }),
       });
       toast("Saque recusado");
       await loadAdmin();
@@ -1237,7 +1333,7 @@
         await api("/api/affiliate/settings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ admin_user_id: userId, key: input.dataset.setting, value: input.value.trim() }),
+          body: JSON.stringify({ admin_user_id: userId, key: input.dataset.setting, value: input.value.trim(), init_data: telegramInitData }),
         });
       }
       toast("Configuracoes salvas");
@@ -1245,6 +1341,8 @@
     }
 
     document.querySelectorAll("[data-icon]").forEach(el => { el.innerHTML = icons[el.dataset.icon] || ""; });
+    $("authRetryBtn").onclick = () => { hideAuthRecovery(); renderSkeleton(); loadSummary().catch(showError); };
+    $("authBotBtn").onclick = () => { window.location.href = `https://t.me/${botUsername || "MangasBaltigo_Bot"}`; };
     document.querySelectorAll(".nav-btn").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
     $("copyLinkBtn").onclick = () => copyText(refLink(), "Link copiado").catch(showError);
     $("copyLinkBtn2").onclick = () => copyText(refLink(), "Link copiado").catch(showError);
