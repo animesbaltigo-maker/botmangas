@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import html
 import json
+import math
 import os
 import time
 from datetime import datetime, timezone
@@ -49,6 +50,7 @@ from services.catalog_client import (
     get_cached_title_summary,
     get_chapter_reader_payload,
     get_home_payload,
+    get_origin_titles,
     get_recent_chapter_updates,
     get_recent_chapters,
     get_title_bundle,
@@ -493,7 +495,26 @@ def _public_title_item(item: dict[str, Any]) -> dict[str, Any]:
         "updated_at": item.get("updated_at") or "",
         "latest_chapter": latest_value or "",
         "chapter_number": item.get("chapter_number") or latest_value or "",
+        "origin": item.get("origin") or item.get("anilist_format") or "",
         "adult": bool(item.get("adult")),
+    }
+
+
+def _paginate_items(items: list[dict[str, Any]], page: int, limit: int) -> dict[str, Any]:
+    page = max(1, int(page or 1))
+    limit = max(1, int(limit or 1))
+    total = len(items)
+    start = (page - 1) * limit
+    end = start + limit
+    total_pages = max(1, math.ceil(total / limit)) if total else 1
+    return {
+        "items": items[start:end],
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "total_pages": total_pages,
+        "has_prev": page > 1,
+        "has_next": end < total,
     }
 
 
@@ -668,13 +689,15 @@ def _search_score(query: str, item: dict[str, Any]) -> tuple[int, int, int]:
     return (100 + overlap * 10, 0, -len(title))
 
 
-async def _search_with_suggestions(query: str, limit: int) -> dict[str, Any]:
+async def _search_with_suggestions(query: str, limit: int, page: int = 1) -> dict[str, Any]:
+    page = max(1, int(page or 1))
+    fetch_limit = max(20, limit * max(page, 1) * 3)
     raw_results = await _cached(
         "search",
         _SEARCH_TTL,
-        lambda: search_titles(query, limit=max(20, limit * 3)),
+        lambda: search_titles(query, limit=fetch_limit),
         query=query,
-        limit=max(20, limit * 3),
+        limit=fetch_limit,
     )
 
     candidates = []
@@ -684,12 +707,14 @@ async def _search_with_suggestions(query: str, limit: int) -> dict[str, Any]:
         candidates.append(item)
 
     ranked = sorted(candidates, key=lambda item: _search_score(query, item), reverse=True)
-    ranked = ranked[:limit]
+    public_ranked = [_public_title_item(item) for item in ranked]
+    page_data = _paginate_items(public_ranked, page, limit)
 
     if ranked:
         return {
             "query": query,
-            "results": [_public_title_item(item) for item in ranked],
+            "results": page_data["items"],
+            **page_data,
             "suggestions": [],
         }
 
@@ -711,6 +736,13 @@ async def _search_with_suggestions(query: str, limit: int) -> dict[str, Any]:
     return {
         "query": query,
         "results": [],
+        "items": [],
+        "page": page,
+        "limit": limit,
+        "total": 0,
+        "total_pages": 1,
+        "has_prev": False,
+        "has_next": False,
         "suggestions": [_public_title_item(item) for item in suggestions if item.get("title_id")],
     }
 
@@ -720,6 +752,9 @@ async def _home_payload(limit: int) -> dict[str, Any]:
         payload = await get_home_payload(limit=limit)
 
         featured = [_public_title_item(item) for item in (payload.get("featured") or []) if _has_real_chapter(item)]
+        manga = [_public_title_item(item) for item in (payload.get("manga") or []) if _has_real_chapter(item)]
+        manhwa = [_public_title_item(item) for item in (payload.get("manhwa") or []) if _has_real_chapter(item)]
+        manhua = [_public_title_item(item) for item in (payload.get("manhua") or []) if _has_real_chapter(item)]
         recommended = [_public_title_item(item) for item in (payload.get("recommended") or []) if _has_real_chapter(item)]
         top_viewed = [_public_title_item(item) for item in (payload.get("top_viewed") or []) if _has_real_chapter(item)]
         recent_chapter_read = [
@@ -746,6 +781,9 @@ async def _home_payload(limit: int) -> dict[str, Any]:
 
         return {
             "featured": featured[:limit],
+            "manga": manga[:limit],
+            "manhwa": manhwa[:limit],
+            "manhua": manhua[:limit],
             "recommended": recommended[:limit],
             "top_viewed": top_viewed[:limit],
             "latest_updates": latest_updates[: max(limit, 12)],
@@ -1392,15 +1430,24 @@ async def api_home(limit: int = Query(HOME_SECTION_LIMIT, ge=4, le=24)):
 
 
 @app.get("/api/search")
-async def api_search(q: str = Query("", min_length=1), limit: int = Query(12, ge=1, le=24)):
-    return await _search_with_suggestions(q, limit)
+async def api_search(
+    q: str = Query("", min_length=1),
+    limit: int = Query(12, ge=1, le=48),
+    page: int = Query(1, ge=1),
+):
+    return await _search_with_suggestions(q, limit, page=page)
 
 
 @app.get("/api/sections/{section_name}")
-async def api_section(section_name: str, limit: int = Query(12, ge=1, le=24), time: str = Query(RECENT_CHAPTER_TIME)):
+async def api_section(
+    section_name: str,
+    limit: int = Query(12, ge=1, le=48),
+    page: int = Query(1, ge=1),
+    time: str = Query(RECENT_CHAPTER_TIME),
+):
     async def producer() -> dict[str, Any]:
         if section_name == "latest_updates":
-            items = await get_recent_chapter_updates(limit=max(limit, 12))
+            items = await get_recent_chapter_updates(limit=max(limit * page, 12))
             clean = [_public_title_item(item) for item in items if _has_real_chapter(item)]
             clean.sort(
                 key=lambda item: (
@@ -1409,10 +1456,10 @@ async def api_section(section_name: str, limit: int = Query(12, ge=1, le=24), ti
                 ),
                 reverse=True,
             )
-            return {"items": clean[:limit]}
+            return _paginate_items(clean, page, limit)
 
         if section_name == "recent_chapters":
-            items = await get_recent_chapters(limit=max(limit, 12))
+            items = await get_recent_chapters(limit=max(limit * page, 12))
             clean = [_public_title_item(item) for item in items if _has_real_chapter(item)]
             clean.sort(
                 key=lambda item: (
@@ -1421,7 +1468,19 @@ async def api_section(section_name: str, limit: int = Query(12, ge=1, le=24), ti
                 ),
                 reverse=True,
             )
-            return {"items": clean[:limit]}
+            return _paginate_items(clean, page, limit)
+
+        if section_name in {"manga", "manhwa", "manhua"}:
+            try:
+                items = await asyncio.wait_for(
+                    get_origin_titles(section_name, limit=max(limit * page + 1, limit + 1), page=page),
+                    timeout=9.0,
+                )
+            except Exception:
+                fallback_type = {"manga": "getFeatured", "manhwa": "getRecommend", "manhua": "getPopular"}[section_name]
+                items = await get_title_search(fallback_type, limit=max(limit * page + 1, 16), page=page)
+            clean = [_public_title_item(item) for item in items if _has_real_chapter(item)]
+            return _paginate_items(clean, page, limit)
 
         section_map = {
             "featured": "getFeatured",
@@ -1438,14 +1497,14 @@ async def api_section(section_name: str, limit: int = Query(12, ge=1, le=24), ti
             raise HTTPException(status_code=404, detail="Seção não encontrada.")
 
         extra = {"search_time": time or RECENT_CHAPTER_TIME} if search_type in {"getRecentRead", "getRecentChapterRead"} else {}
-        items = await get_title_search(search_type, limit=max(limit, 16), **extra)
+        items = await get_title_search(search_type, limit=max(limit * page + 1, 16), page=page, **extra)
         clean = [_public_title_item(item) for item in items if _has_real_chapter(item)]
         if section_name in {"latest_titles", "recent_titles", "recent_chapter_read"}:
             clean.sort(
                 key=lambda item: (item.get("updated_at") or "", item.get("latest_chapter") or ""),
                 reverse=True,
             )
-        return {"items": clean[:limit]}
+        return _paginate_items(clean, page, limit)
 
     return await _stale_while_revalidate(
         "section",
@@ -1454,6 +1513,7 @@ async def api_section(section_name: str, limit: int = Query(12, ge=1, le=24), ti
         producer,
         section_name=section_name,
         limit=limit,
+        page=page,
         time=time,
     )
 
