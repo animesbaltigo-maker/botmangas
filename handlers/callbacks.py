@@ -265,9 +265,15 @@ def _miniapp_url(
     page: str = "",
     route: str = "",
     lang: str = "",
+    user_id: int | str | None = None,
     source: str = "bot",
 ) -> str:
     params: dict[str, str] = {"source": source}
+
+    if user_id:
+        uid = str(user_id).strip()
+        if uid.isdigit():
+            params["user_id"] = uid
 
     if title_id:
         tid = str(title_id).strip()
@@ -364,6 +370,7 @@ def _title_keyboard(bundle: dict, last_read: dict | None = None, user_id: int | 
                         chapter_id=last_read["chapter_id"],
                         route="reader",
                         lang=lang,
+                        user_id=user_id,
                     )
                 ),
             )
@@ -379,6 +386,7 @@ def _title_keyboard(bundle: dict, last_read: dict | None = None, user_id: int | 
                         chapter_id=latest_chapter["chapter_id"],
                         route="reader",
                         lang=lang,
+                        user_id=user_id,
                     )
                 ),
             )
@@ -397,6 +405,7 @@ def _title_keyboard(bundle: dict, last_read: dict | None = None, user_id: int | 
                         page="chapters",
                         route="chapters",
                         lang=lang,
+                        user_id=user_id,
                     )
                 ),
             )
@@ -726,7 +735,14 @@ def _chapter_button_label(item: dict, read_ids: set[str]) -> str:
     return f"✅ {number}" if item.get("chapter_id") in read_ids else number
 
 
-def _chapter_list_keyboard(bundle: dict, chapters: list[dict], page: int, read_ids: set[str], lang: str = "") -> InlineKeyboardMarkup:
+def _chapter_list_keyboard(
+    bundle: dict,
+    chapters: list[dict],
+    page: int,
+    read_ids: set[str],
+    lang: str = "",
+    user_id: int | None = None,
+) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     total_items = len(chapters)
     total_pages = max(1, ((total_items - 1) // CHAPTERS_PER_PAGE) + 1)
@@ -745,6 +761,7 @@ def _chapter_list_keyboard(bundle: dict, chapters: list[dict], page: int, read_i
                         chapter_id=item["chapter_id"],
                         route="reader",
                         lang=lang,
+                        user_id=user_id,
                     )
                 ),
             )
@@ -775,7 +792,7 @@ def _chapter_list_keyboard(bundle: dict, chapters: list[dict], page: int, read_i
             InlineKeyboardButton(
                 "🔙 Voltar para a obra",
                 web_app=WebAppInfo(
-                    url=_miniapp_url(title_id=bundle["title_id"], route="detail")
+                    url=_miniapp_url(title_id=bundle["title_id"], route="detail", user_id=user_id)
                 ),
             )
         ]
@@ -798,7 +815,13 @@ def _chapter_text(chapter: dict) -> str:
     )
 
 
-def _chapter_keyboard(chapter: dict, telegraph_url: str = "", *, telegraph_pending: bool = False) -> InlineKeyboardMarkup:
+def _chapter_keyboard(
+    chapter: dict,
+    telegraph_url: str = "",
+    *,
+    telegraph_pending: bool = False,
+    user_id: int | None = None,
+) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
 
     rows.append(
@@ -810,6 +833,7 @@ def _chapter_keyboard(chapter: dict, telegraph_url: str = "", *, telegraph_pendi
                         title_id=chapter["title_id"],
                         chapter_id=chapter["chapter_id"],
                         route="reader",
+                        user_id=user_id,
                     )
                 ),
             )
@@ -827,6 +851,7 @@ def _chapter_keyboard(chapter: dict, telegraph_url: str = "", *, telegraph_pendi
                         title_id=chapter["title_id"],
                         chapter_id=chapter["previous_chapter"]["chapter_id"],
                         route="reader",
+                        user_id=user_id,
                     )
                 ),
             )
@@ -840,6 +865,7 @@ def _chapter_keyboard(chapter: dict, telegraph_url: str = "", *, telegraph_pendi
                         title_id=chapter["title_id"],
                         chapter_id=chapter["next_chapter"]["chapter_id"],
                         route="reader",
+                        user_id=user_id,
                     )
                 ),
             )
@@ -852,7 +878,7 @@ def _chapter_keyboard(chapter: dict, telegraph_url: str = "", *, telegraph_pendi
             InlineKeyboardButton(
                 "📚 Ver capítulos",
                 web_app=WebAppInfo(
-                    url=_miniapp_url(title_id=chapter["title_id"], page="chapters", route="chapters")
+                    url=_miniapp_url(title_id=chapter["title_id"], page="chapters", route="chapters", user_id=user_id)
                 ),
             )
         ]
@@ -862,7 +888,7 @@ def _chapter_keyboard(chapter: dict, telegraph_url: str = "", *, telegraph_pendi
             InlineKeyboardButton(
                 "🔙 Voltar para a obra",
                 web_app=WebAppInfo(
-                    url=_miniapp_url(title_id=chapter["title_id"], route="detail")
+                    url=_miniapp_url(title_id=chapter["title_id"], route="detail", user_id=user_id)
                 ),
             )
         ]
@@ -1015,7 +1041,7 @@ async def _auto_finalize_telegraph_panel(
             chat_id=chat_id,
             message_id=message_id,
             text=_chapter_text(chapter),
-            keyboard=_chapter_keyboard(chapter, telegraph_url=url),
+            keyboard=_chapter_keyboard(chapter, telegraph_url=url, user_id=user_id),
             photo=_pick_chapter_image(chapter),
         )
 
@@ -1411,7 +1437,7 @@ async def send_chapters_page(target, context: ContextTypes.DEFAULT_TYPE, title_i
     panel_message = await _render_panel(
         target,
         _chapter_list_text(bundle, page, len(chapters), lang),
-        _chapter_list_keyboard(bundle, chapters, page, read_ids, lang),
+        _chapter_list_keyboard(bundle, chapters, page, read_ids, lang, user_id),
         _pick_bundle_image(bundle),
         edit=edit,
     )
@@ -1472,7 +1498,7 @@ async def send_chapter_panel(target, context: ContextTypes.DEFAULT_TYPE, chapter
     panel_message = await _render_panel(
         target,
         _chapter_text(chapter),
-        _chapter_keyboard(chapter, telegraph_url=telegraph_url, telegraph_pending=not bool(telegraph_url)),
+        _chapter_keyboard(chapter, telegraph_url=telegraph_url, telegraph_pending=not bool(telegraph_url), user_id=user_id),
         _pick_chapter_image(chapter),
         edit=edit,
     )
@@ -1527,7 +1553,11 @@ async def _send_telegraph(query, chapter_id: str):
     panel_message = await _render_panel(
         query,
         _chapter_text(chapter),
-        _chapter_keyboard(chapter, telegraph_url=url),
+        _chapter_keyboard(
+            chapter,
+            telegraph_url=url,
+            user_id=getattr(getattr(query, "from_user", None), "id", None),
+        ),
         _pick_chapter_image(chapter),
         edit=True,
     )
@@ -1767,6 +1797,7 @@ async def callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             chapter,
                             telegraph_url=get_cached_chapter_page_url(chapter["chapter_id"]),
                             telegraph_pending=not bool(get_cached_chapter_page_url(chapter["chapter_id"])),
+                            user_id=user_id,
                         ),
                         _pick_chapter_image(chapter),
                         edit=True,
