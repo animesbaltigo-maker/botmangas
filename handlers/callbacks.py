@@ -281,9 +281,9 @@ _STATUS_LABELS = {
 
 
 _TITLE_BUTTONS = {
-    "latest": {"pt": "Último capítulo", "en": "Latest chapter", "es": "Último capítulo"},
-    "list": {"pt": "Lista de capítulos", "en": "Chapter list", "es": "Lista de capítulos"},
-    "offline": {"pt": "Ler off-line", "en": "Read offline", "es": "Leer sin conexión"},
+    "latest": {"pt": "🆕 Último capítulo", "en": "🆕 Latest chapter", "es": "🆕 Último capítulo"},
+    "list": {"pt": "📜 Lista de capítulos", "en": "📜 Chapter list", "es": "📜 Lista de capítulos"},
+    "offline": {"pt": "📥 Ler off-line", "en": "📥 Read offline", "es": "📥 Leer sin conexión"},
 }
 
 
