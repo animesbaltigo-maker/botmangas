@@ -62,10 +62,11 @@ from services.catalog_client import (
     search_titles,
 )
 from services.cakto_gateway import extract_webhook_secret_values, process_cakto_webhook
+from services.cakto_gateway import get_checkout_options
 from services.cache_cleanup import start_cache_cleanup_loop, stop_cache_cleanup_loop
 from services.media_pipeline import resolve_telegraph_asset_path
 from services.metrics import get_last_read_entry, get_recently_read, mark_chapter_read
-from services.offline_access import init_offline_access_db, is_offline_user_allowed
+from services.offline_access import get_offline_access, init_offline_access_db, is_offline_user_allowed
 from services.offline_messages import offline_welcome_message
 from services.epub_service import get_or_build_epub
 from services.pdf_service import get_or_build_pdf
@@ -1679,6 +1680,106 @@ async def api_section(
     )
 
 
+@app.get("/api/news/jbox")
+async def api_jbox_manga_news(limit: int = Query(12, ge=1, le=30)):
+    async def producer() -> dict[str, Any]:
+        url = "https://www.jbox.com.br/categoria/manga/"
+        timeout = httpx.Timeout(15.0, connect=8.0, read=15.0, write=8.0, pool=8.0)
+
+        def image_from(node: Any) -> str:
+            if not node:
+                return ""
+            for source in node.find_all("source"):
+                srcset = source.get("srcset") or ""
+                if srcset and "avif" not in str(source.get("type") or "").lower():
+                    return urljoin(url, srcset.split(",")[0].strip().split(" ")[0])
+            img = node.find("img")
+            if not img:
+                return ""
+            src = img.get("data-src") or img.get("src") or ""
+            if (not src or src.startswith("data:")) and img.get("srcset"):
+                src = str(img.get("srcset")).split(",")[0].strip().split(" ")[0]
+            return urljoin(url, src) if src and not src.startswith("data:") else ""
+
+        async def load_article(client: httpx.AsyncClient, item_url: str, fallback: dict[str, Any]) -> dict[str, Any]:
+            try:
+                article_response = await client.get(item_url, headers={"User-Agent": "Mozilla/5.0 BaltigoMiniApp/1.0"})
+                article_response.raise_for_status()
+                article_soup = BeautifulSoup(article_response.text, "html.parser")
+                title_node = article_soup.find("h1")
+                title = " ".join((title_node.get_text(" ", strip=True) if title_node else fallback["title"]).split())
+                og_image = article_soup.find("meta", property="og:image")
+                image = og_image.get("content") if og_image else fallback.get("image", "")
+                content_node = article_soup.select_one(".post-content") or article_soup.find("article")
+                paragraphs: list[str] = []
+                if content_node:
+                    for paragraph in content_node.find_all(["p", "h2", "h3"], limit=42):
+                        text = " ".join(paragraph.get_text(" ", strip=True).split())
+                        if text and len(text) > 20 and "Leia mais" not in text:
+                            paragraphs.append(text)
+                tags = [
+                    " ".join(tag.get_text(" ", strip=True).split())
+                    for tag in article_soup.select('a[rel="category tag"], .post-categories a')[:6]
+                ]
+                time_node = article_soup.find("time")
+                published = (time_node.get("datetime") if time_node else "") or fallback.get("published_at", "")
+                summary = fallback.get("summary") or (paragraphs[0] if paragraphs else "")
+                return {
+                    **fallback,
+                    "title": title,
+                    "summary": summary,
+                    "content": "\n\n".join(paragraphs) or summary,
+                    "image": urljoin(item_url, image) if image else "",
+                    "published_at": published,
+                    "tags": [tag for tag in tags if tag],
+                }
+            except Exception:
+                return fallback
+
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(url, headers={"User-Agent": "Mozilla/5.0 BaltigoMiniApp/1.0"})
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            items: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            for node in soup.find_all("article", limit=80):
+                link_node = node.find("a", href=True)
+                item_url = urljoin(url, link_node.get("href") if link_node else "")
+                if not item_url or item_url in seen:
+                    continue
+                title_node = node.find(["h1", "h2", "h3"])
+                title = " ".join((title_node.get_text(" ", strip=True) if title_node else node.get_text(" ", strip=True)).split())
+                if not title or len(title) < 12:
+                    continue
+                summary_node = node.find("p")
+                summary = " ".join((summary_node.get_text(" ", strip=True) if summary_node else "").split())
+                time_node = node.find("time")
+                published = (time_node.get("datetime") if time_node else "") or (time_node.get_text(" ", strip=True) if time_node else "")
+                seen.add(item_url)
+                items.append(
+                    {
+                        "id": hashlib.sha1(item_url.encode("utf-8")).hexdigest()[:16],
+                        "title": title,
+                        "summary": summary,
+                        "content": summary,
+                        "image": image_from(node),
+                        "published_at": published,
+                        "tags": ["Mangá"],
+                        "url": item_url,
+                    }
+                )
+                if len(items) >= limit:
+                    break
+            items = await asyncio.gather(*(load_article(client, item["url"], item) for item in items))
+        return {"ok": True, "items": list(items), "updated_at": int(time.time())}
+
+    try:
+        return await _cached("manga_news_jbox", 900, producer, limit=limit)
+    except Exception as exc:
+        LOGGER.warning("jbox manga news fetch failed: %s", exc)
+        return {"ok": False, "items": [], "updated_at": int(time.time()), "error": "news_unavailable"}
+
+
 @app.get("/api/news/manga")
 async def api_manga_news(limit: int = Query(12, ge=1, le=30)):
     async def producer() -> dict[str, Any]:
@@ -1929,12 +2030,18 @@ async def api_plan_status(request: Request, user_id: str = Query("")):
     except HTTPException:
         safe_user_id = _safe_int_text(user_id)
 
-    active = bool(safe_user_id and is_offline_user_allowed(safe_user_id))
+    access = get_offline_access(safe_user_id) if safe_user_id else None
+    active = bool(access and access.get("is_active"))
     subscribe_url = f"/affiliate?user_id={safe_user_id}" if safe_user_id else "/affiliate"
     return {
         "ok": True,
         "active": active,
-        "plan": "Offline ativo" if active else "Gratuito",
+        "plan": (access or {}).get("plan_label") or ("Offline ativo" if active else "Gratuito"),
+        "plan_key": (access or {}).get("plan") or "",
+        "status": (access or {}).get("status") or ("active" if active else "inactive"),
+        "expires_at": (access or {}).get("expires_at") or "",
+        "is_lifetime": bool((access or {}).get("is_lifetime")),
+        "checkout_options": get_checkout_options(safe_user_id) if safe_user_id else [],
         "description": (
             "Downloads PDF/EPUB liberados pelo bot."
             if active
