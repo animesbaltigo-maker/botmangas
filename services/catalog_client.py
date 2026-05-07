@@ -61,6 +61,7 @@ _HTTP_SEMAPHORE = asyncio.Semaphore(24)
 
 _CACHE: dict[str, dict[str, Any]] = {}
 _INFLIGHT: dict[str, asyncio.Task] = {}
+_TITLE_SEARCH_LOCK = asyncio.Lock()
 _TITLE_URL_CACHE: dict[str, str] = {}
 _TITLE_SUMMARY_CACHE: dict[str, dict[str, Any]] = {}
 _TITLE_SUMMARY_CACHE_LOADED = False
@@ -1449,7 +1450,8 @@ async def get_title_search(search_type: str, limit: int = HOME_SECTION_LIMIT, **
         }
         payload.update({key: value for key, value in extra.items() if value not in (None, "")})
 
-        response = await _request_form_json("/api/v1/title/search/", payload)
+        async with _TITLE_SEARCH_LOCK:
+            response = await _request_form_json("/api/v1/title/search/", payload)
         if response.get("code") != 200:
             return []
 
@@ -2269,18 +2271,84 @@ async def get_recent_chapter_updates(limit: int = HOME_SECTION_LIMIT) -> list[di
     return results
 
 
+async def get_origin_titles(origin: str, limit: int = HOME_SECTION_LIMIT, page: int = 1) -> list[dict[str, Any]]:
+    normalized_origin = _clean(origin).lower().replace("-", "").replace("_", "")
+    origin_map = {
+        "manga": "manga",
+        "mangas": "manga",
+        "manhwa": "manhwa",
+        "manhwas": "manhwa",
+        "manhua": "manhua",
+        "manhuas": "manhua",
+    }
+    resolved = origin_map.get(normalized_origin, normalized_origin or "manga")
+    target_limit = max(1, int(limit))
+    page = max(1, int(page))
+
+    payload_variants = [
+        {"search_origin": resolved, "page": page},
+        {"origin": resolved, "page": page},
+        {"search_format": resolved, "page": page},
+        {"format": resolved, "page": page},
+    ]
+
+    seen: set[str] = set()
+    results: list[dict[str, Any]] = []
+    for extra in payload_variants:
+        items = await get_title_search("getByOrigin", limit=target_limit, **extra)
+        for item in items:
+            title_id = item.get("title_id") or ""
+            if not title_id or title_id in seen:
+                continue
+            seen.add(title_id)
+            item["origin"] = resolved
+            results.append(item)
+            if len(results) >= target_limit:
+                return results
+        if results:
+            return results
+
+    fallback_type = {
+        "manga": "getFeatured",
+        "manhwa": "getRecommend",
+        "manhua": "getPopular",
+    }.get(resolved, "getFeatured")
+    return await get_title_search(fallback_type, limit=target_limit, page=page)
+
+
 async def get_home_payload(limit: int = HOME_SECTION_LIMIT) -> dict[str, Any]:
     limit = max(4, int(limit))
 
-    featured = await get_title_search("getFeatured", limit=min(limit, 10))
-    recommended = await get_title_search("getRecommend", limit=limit)
-    top_viewed = await get_title_search("getRecentRead", limit=limit, search_time=RECENT_CHAPTER_TIME)
-    latest_updates = await get_recent_chapter_updates(limit=max(limit, 12))
-    recent_chapter_read = await get_title_search("getRecentChapterRead", limit=limit, search_time=RECENT_CHAPTER_TIME)
-    popular_season = await get_title_search("getPopular", limit=limit)
+    async def _safe(coro, fallback: list[dict[str, Any]] | None = None, timeout: float = 10.0) -> list[dict[str, Any]]:
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        except Exception:
+            return list(fallback or [])
+
+    featured = await _safe(get_title_search("getFeatured", limit=min(limit, 10)), timeout=12.0)
+    manga = await _safe(get_origin_titles("manga", limit=limit), timeout=12.0)
+    manhwa = await _safe(get_origin_titles("manhwa", limit=limit), timeout=12.0)
+    manhua = await _safe(get_origin_titles("manhua", limit=limit), timeout=12.0)
+    recommended = await _safe(get_title_search("getRecommend", limit=limit), timeout=12.0)
+    top_viewed = await _safe(get_title_search("getRecentRead", limit=limit, search_time=RECENT_CHAPTER_TIME), timeout=12.0)
+    latest_updates = await _safe(get_recent_chapter_updates(limit=max(limit, 12)), timeout=12.0)
+    recent_chapter_read = await _safe(get_title_search("getRecentChapterRead", limit=limit, search_time=RECENT_CHAPTER_TIME), timeout=12.0)
+    popular_season = await _safe(get_title_search("getPopular", limit=limit), timeout=12.0)
+
+    if not manga:
+        manga = featured[:limit]
+    if not manhwa:
+        manhwa = recommended[:limit]
+    if not manhua:
+        manhua = popular_season[:limit]
+    if not featured:
+        featured = (manga or manhwa or manhua or popular_season or recommended)[: min(limit, 10)]
 
     return {
         "featured": featured,
+        "manga": manga,
+        "manhwa": manhwa,
+        "manhua": manhua,
         "recommended": recommended,
         "top_viewed": top_viewed,
         "latest_updates": latest_updates,
@@ -2297,12 +2365,18 @@ async def get_home_payload(limit: int = HOME_SECTION_LIMIT) -> dict[str, Any]:
 def get_cached_home_snapshot(limit: int = HOME_SECTION_LIMIT) -> dict[str, Any]:
     limit = max(4, int(limit))
     featured = get_cached_title_search("getFeatured", limit=min(limit, 10))
+    manga = get_cached_title_search("getByOrigin", limit=limit, search_origin="manga", page=1)
+    manhwa = get_cached_title_search("getByOrigin", limit=limit, search_origin="manhwa", page=1)
+    manhua = get_cached_title_search("getByOrigin", limit=limit, search_origin="manhua", page=1)
     recommended = get_cached_title_search("getRecommend", limit=limit)
     top_viewed = get_cached_title_search("getRecentRead", limit=limit, search_time=RECENT_CHAPTER_TIME)
     recent_chapter_read = get_cached_title_search("getRecentChapterRead", limit=limit, search_time=RECENT_CHAPTER_TIME)
     popular_season = get_cached_title_search("getPopular", limit=limit)
     return {
         "featured": featured,
+        "manga": manga,
+        "manhwa": manhwa,
+        "manhua": manhua,
         "recommended": recommended,
         "top_viewed": top_viewed,
         "latest_updates": [],
