@@ -628,6 +628,45 @@
     .chapter-n { font-size: 12.5px; font-weight: 800; line-height: 1.2; }
     .chapter-meta { font-size: 10.5px; color: var(--text3); margin-top: 3px; line-height: 1.3; }
 
+    .chapter-panel.native-list { background: #15161a; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; padding: 18px 0 8px; box-shadow: 0 18px 50px rgba(0,0,0,.24); }
+    .chapter-topline { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 0 18px 14px; }
+    .chapter-total { font-size: clamp(24px, 6vw, 34px); line-height: 1.08; font-weight: 500; color: rgba(245,247,255,.96); letter-spacing: 0; white-space: nowrap; }
+    .chapter-toolbar { display: flex; align-items: center; gap: 8px; }
+    .chapter-icon-btn { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: rgba(245,247,255,.78); border: 1px solid transparent; background: transparent; cursor: pointer; transition: background .16s, color .16s, border-color .16s, transform .16s; }
+    .chapter-icon-btn:active { transform: scale(.94); background: rgba(255,255,255,.08); }
+    .chapter-icon-btn.active { color: #b7c9ff; border-color: rgba(183,201,255,.32); background: rgba(183,201,255,.09); }
+    .chapter-search-row { padding: 0 18px 12px; display: none; }
+    .chapter-search-row.open { display: block; }
+    .chapter-panel.native-list .chapter-search { height: 46px; border-radius: 8px; padding: 0 14px; gap: 12px; background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.10); }
+    .chapter-panel.native-list .chapter-search input { font-size: 15px; }
+    .chapter-options-row { padding: 0 18px 16px; display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; }
+    .chapter-options-row::-webkit-scrollbar { display: none; }
+    .chapter-panel.native-list .language-select { height: 40px; min-width: 148px; border-radius: 8px; border-color: rgba(183,201,255,.28); background: rgba(183,201,255,.08); flex: 0 0 auto; }
+    .chapter-chip { height: 40px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.10); border-radius: 8px; background: rgba(255,255,255,.045); color: rgba(245,247,255,.78); padding: 0 12px; font-size: 13px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+    .chapter-chip.active { color: #b7c9ff; border-color: rgba(183,201,255,.32); background: rgba(183,201,255,.09); }
+    .chapter-panel.native-list .chapter-grid { display: flex; flex-direction: column; gap: 0; }
+    .chapter-row { width: 100%; min-height: 92px; display: grid; grid-template-columns: minmax(0, 1fr) 54px; align-items: center; gap: 12px; padding: 16px 14px 16px 18px; color: rgba(245,247,255,.9); border-top: 1px solid rgba(255,255,255,.035); text-align: left; cursor: pointer; transition: background .16s, color .16s; }
+    .chapter-row:first-child { border-top-color: transparent; }
+    .chapter-row:active { background: rgba(255,255,255,.055); }
+    .chapter-row.read { color: rgba(245,247,255,.48); }
+    .chapter-row.current { color: #fff; background: linear-gradient(90deg, rgba(183,201,255,.12), transparent 72%); }
+    .chapter-main-btn { min-width: 0; text-align: left; color: inherit; }
+    .chapter-panel.native-list .chapter-n { font-size: clamp(24px, 6vw, 36px); font-weight: 500; line-height: 1.1; letter-spacing: 0; }
+    .chapter-panel.native-list .chapter-meta { font-size: clamp(18px, 4.8vw, 24px); color: currentColor; opacity: .72; margin-top: 8px; line-height: 1.2; letter-spacing: 0; }
+    .chapter-download-btn { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; color: rgba(245,247,255,.72); border: 0; background: transparent; flex-shrink: 0; cursor: pointer; }
+    .chapter-download-btn:active { background: rgba(255,255,255,.08); transform: scale(.94); }
+    .chapter-download-btn.downloaded { color: #79e2aa; }
+    .chapter-filter-sheet { position: fixed; inset: auto 0 0; z-index: 260; padding: 0 0 calc(18px + var(--safe-b)); background: rgba(18,19,23,.98); border-top: 1px solid rgba(255,255,255,.10); box-shadow: 0 -20px 60px rgba(0,0,0,.55); transform: translateY(105%); transition: transform .22s var(--ease); }
+    .chapter-filter-sheet.open { transform: translateY(0); }
+    .chapter-filter-tabs { height: 56px; display: grid; grid-template-columns: 1fr 1fr 48px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .chapter-filter-tab { color: rgba(245,247,255,.74); font-size: 14px; font-weight: 750; position: relative; }
+    .chapter-filter-tab.active { color: #b7c9ff; }
+    .chapter-filter-tab.active::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: 0; height: 2px; background: #b7c9ff; border-radius: 2px 2px 0 0; }
+    .chapter-filter-list { padding: 10px 20px 22px; }
+    .chapter-filter-option { width: 100%; min-height: 62px; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 16px; color: rgba(245,247,255,.9); text-align: left; font-size: 18px; font-weight: 650; }
+    .chapter-check { width: 22px; height: 22px; border-radius: 4px; border: 2px solid #b7c9ff; display: grid; place-items: center; color: #101626; }
+    .chapter-filter-option.active .chapter-check { background: #b7c9ff; }
+
     /* ── READER ── */
     body.reader-active { background: #000; overscroll-behavior: none; }
     body.reader-active::before, body.reader-active::after { opacity: 0; }
@@ -732,6 +771,42 @@
     }
 
     /* ── EMPTY STATE ── */
+    .reader-setting-row, .reader-mode-option {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .reader-setting-row:active, .reader-mode-option:active { background: rgba(255,255,255,.06); }
+    .reader-fit-height:not(.reader-mode-single) .reader-page-item {
+      display: flex;
+      justify-content: center;
+    }
+    .reader-fit-height:not(.reader-mode-single) .reader-page-item img {
+      width: auto;
+      max-width: min(100vw, 860px);
+    }
+    .reader-end-state {
+      min-height: 320px;
+      background: #000;
+      color: #f5f7ff;
+      display: grid;
+      place-items: start center;
+      padding: 42px 20px 80px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.7;
+      border-top: 1px solid rgba(255,255,255,.08);
+    }
+    .reader-end-state .reader-end-muted {
+      display: block;
+      margin-top: 22px;
+      font-size: 18px;
+      color: rgba(245,247,255,.88);
+    }
     .empty-state { border: 1px solid var(--line); border-radius: var(--r-lg); background: rgba(255,255,255,.02); padding: 28px 20px; text-align: center; color: var(--text2); }
     .empty-icon { font-size: 32px; margin-bottom: 10px; }
     .empty-title { font-family: var(--font-d); font-size: 18px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
@@ -1112,11 +1187,14 @@ const state = {
   readerCurrentPage: 1,
   readerUiTimer: null,
   readerAutoLoading: false,
+  readerAutoScroll: loadReaderAutoScroll(),
+  readerAutoScrollTimer: null,
   readerLoadedChapters: new Set(),
   loadingLock: 0,
   localProgress: loadLocalProgress(),
   favorites: loadFavorites(),
   seenUpdates: loadSeenUpdates(),
+  downloadedChapters: loadDownloadedChapters(),
   cache: { home: null, titles: new Map(), chapters: new Map(), search: new Map() },
   inflight: { title: new Map(), chapter: new Map(), search: new Map() },
 };
@@ -1158,6 +1236,18 @@ function getFavList() {
   return Object.values(state.favorites).sort((a, b) => (b.added_at || 0) - (a.added_at || 0));
 }
 
+function loadDownloadedChapters() {
+  try { return JSON.parse(localStorage.getItem("mb_downloaded_chapters_v1") || "{}"); } catch (_) { return {}; }
+}
+function saveDownloadedChapters() {
+  try { localStorage.setItem("mb_downloaded_chapters_v1", JSON.stringify(state.downloadedChapters || {})); } catch (_) {}
+}
+function markChapterDownloaded(chapterId) {
+  if (!chapterId) return;
+  state.downloadedChapters[chapterId] = Date.now();
+  saveDownloadedChapters();
+}
+
 function normalizeLang(value) {
   return String(value || "").trim().toLowerCase().replace(/_/g, "-") || "pt-br";
 }
@@ -1185,12 +1275,19 @@ function saveReaderFit(fit) {
   state.readerFit = ["width", "height"].includes(fit) ? fit : "width";
   try { localStorage.setItem("mb_reader_fit_v1", state.readerFit); } catch (_) {}
 }
+function loadReaderAutoScroll() {
+  return localStorage.getItem("mb_reader_autoscroll_v1") === "1";
+}
+function saveReaderAutoScroll(enabled) {
+  state.readerAutoScroll = Boolean(enabled);
+  try { localStorage.setItem("mb_reader_autoscroll_v1", state.readerAutoScroll ? "1" : "0"); } catch (_) {}
+}
 function readerModeLabel(mode = state.readerMode) {
   return ({
-    webtoon: "Webtoon",
-    vertical: "Vertical continuo",
-    "single-ltr": "Horizontal unico (LTR)",
-    "single-rtl": "Horizontal unico (RTL)",
+    webtoon: "Padrão / Webtoon",
+    vertical: "Vertical contínuo",
+    "single-ltr": "Horizontal único (LTR)",
+    "single-rtl": "Horizontal único (RTL)",
   })[mode] || "Webtoon";
 }
 function languageLabel(option) {
@@ -1419,6 +1516,8 @@ function setPage(pageName) {
   // hide navbar in reader
   $$("bottomNav").style.display = pageName === "readerPage" ? "none" : "";
   document.body.classList.toggle("reader-active", pageName === "readerPage");
+  if (pageName !== "readerPage") stopReaderAutoScroll();
+  else if (state.readerAutoScroll) startReaderAutoScroll();
 
   // sync nav active state
   const tabMap = { homePage: "home", historyPage: "history", profilePage: "profile", libPage: "lib", updatesPage: "updates" };
@@ -1975,6 +2074,73 @@ function sortChapters(chapters) {
   return [...chapters].sort((a, b) => extractChapterNum(b) - extractChapterNum(a));
 }
 
+function iconSvg(name, size = 26) {
+  const common = `width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"`;
+  const paths = {
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
+    download: '<path d="M12 3v12"/><path d="m6 11 6 6 6-6"/><path d="M5 21h14"/>',
+    filter: '<path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/>',
+    close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    check: '<path d="m5 12 4 4L19 6"/>',
+  };
+  return `<svg ${common}>${paths[name] || ""}</svg>`;
+}
+
+function chapterDateLabel(chapter) {
+  const raw = chapter?.updated_at || chapter?.published_at || "";
+  if (!raw) return chapter?.chapter_language ? String(chapter.chapter_language).toUpperCase() : "Toque para ler";
+  const ts = normalizeRemoteTime(raw);
+  if (Number.isFinite(ts) && ts > 0) return timeAgo(ts);
+  return String(raw);
+}
+
+async function requestChapterDownload(chapter, button) {
+  if (!chapter?.chapter_id) return;
+  if (!state.userId) {
+    toast("Abra pelo Telegram para baixar. O webapp precisa identificar seu ID.");
+    return;
+  }
+  const original = button?.innerHTML;
+  if (button) {
+    button.disabled = true;
+    button.classList.add("active");
+    button.innerHTML = iconSvg("download", 24);
+  }
+  let sent = false;
+  showLoading("Preparando download", "Se o acesso estiver ativo, o PDF será enviado no chat do bot.");
+  try {
+    const response = await api("/api/download/chapter", {
+      method: "POST",
+      timeoutMs: 180000,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: state.userId,
+        chapter_id: chapter.chapter_id,
+        title_id: state.currentTitleId,
+        lang: state.chapterLang,
+      }),
+    });
+    markChapterDownloaded(chapter.chapter_id);
+    sent = true;
+    if (button) button.classList.add("downloaded");
+    toast(response?.message || "Pedido recebido. O arquivo será enviado no chat do bot.");
+  } catch (err) {
+    const message = String(err?.message || "");
+    if (message.includes("acesso offline") || message.includes("/plano") || message.includes("403")) {
+      toast("Download bloqueado. Envie /plano no chat do bot para ativar um plano.");
+    } else {
+      toast(message || "Não consegui iniciar o download agora.");
+    }
+  } finally {
+    hideLoading();
+    if (button) {
+      button.disabled = false;
+      button.classList.remove("active");
+      button.innerHTML = sent ? iconSvg("check", 28) : (original || iconSvg("download", 26));
+    }
+  }
+}
+
 function renderDetail(bundle, opts = {}) {
   const rawChapters = Array.isArray(bundle?.chapters) ? bundle.chapters : [];
   const flatChapters = rawChapters.flatMap(entry =>
@@ -2036,37 +2202,51 @@ function renderDetail(bundle, opts = {}) {
         </div>
       </section>
       <div class="detail-body">
-        <div class="chapter-panel">
-          <div class="section-head">
-            <div class="section-label">
-              <div class="section-accent"></div>
-              <div><div class="section-title">Capítulos</div><div class="section-count">${chapters.length} disponíveis</div></div>
+        <div class="chapter-panel native-list">
+          <div class="chapter-topline">
+            <div class="chapter-total"><span id="chapterVisibleCount">${chapters.length}</span> Capítulos</div>
+            <div class="chapter-toolbar">
+              <button class="chapter-icon-btn" id="chapterSearchBtn" title="Buscar capítulo" aria-label="Buscar capítulo">${iconSvg("search", 30)}</button>
+              <button class="chapter-icon-btn" id="chapterBulkDownloadBtn" title="Baixar a obra" aria-label="Baixar a obra">${iconSvg("download", 31)}</button>
+              <button class="chapter-icon-btn" id="chapterFilterBtn" title="Filtrar e ordenar" aria-label="Filtrar e ordenar">${iconSvg("filter", 31)}</button>
             </div>
           </div>
-          <div class="chapter-controls">
+          <div class="chapter-search-row" id="chapterSearchRow">
+            <div class="chapter-search">
+              ${iconSvg("search", 18)}
+              <input id="chapterFilterInput" placeholder="Buscar capítulo..." autocomplete="off" />
+            </div>
+          </div>
+          <div class="chapter-options-row">
             <select class="language-select" id="chapterLanguageSelect" aria-label="Idioma dos capítulos">
               ${languageOptions.map(option => {
                 const code = languageCode(option);
                 return `<option value="${esc(code)}" ${code === currentLanguage ? "selected" : ""}>${esc(languageLabel(option))}</option>`;
               }).join("")}
             </select>
-            ${chapters.length > 10 ? `
-              <div class="chapter-search">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-                <input id="chapterFilterInput" placeholder="Filtrar capítulo..." autocomplete="off" />
-              </div>` : ""}
-            <button class="chapter-order-btn" id="chapterOrderBtn">
+            <button class="chapter-chip active" id="chapterOrderBtn">
               <span id="chapterOrderIcon">↓</span>
               <span id="chapterOrderLabel">Mais novo</span>
             </button>
+            <button class="chapter-chip" id="chapterFilterSummary">Todos</button>
           </div>
           <div class="chapter-grid" id="chapterGrid"></div>
+          <div class="chapter-filter-sheet" id="chapterFilterSheet">
+            <div class="chapter-filter-tabs">
+              <button class="chapter-filter-tab active" data-sheet-tab="filter">Filtro</button>
+              <button class="chapter-filter-tab" data-sheet-tab="order">Ordenar</button>
+              <button class="chapter-icon-btn" id="chapterFilterClose" aria-label="Fechar filtros">${iconSvg("close", 22)}</button>
+            </div>
+            <div class="chapter-filter-list" id="chapterFilterOptions"></div>
+          </div>
         </div>
       </div>
     </div>`;
 
   let chapterOrder = "desc";
   let chapterFilter = "";
+  let chapterStatusFilter = "all";
+  let filterSheetTab = "filter";
   const readMap = {};
   Object.values(state.localProgress).forEach(p => {
     if (p?.title_id === bundle.title_id && p?.chapter_id) readMap[p.chapter_id] = true;
@@ -2074,6 +2254,17 @@ function renderDetail(bundle, opts = {}) {
   const grid = $$("chapterGrid");
 
   function buildChapterButtons(list) {
+    if ($$("chapterVisibleCount")) $$("chapterVisibleCount").textContent = String(list.length);
+    if ($$("chapterFilterSummary")) {
+      $$("chapterFilterSummary").textContent = ({
+        all: "Todos",
+        unread: "Não lidos",
+        read: "Lidos",
+        downloaded: "Baixados",
+      })[chapterStatusFilter] || "Todos";
+      $$("chapterFilterSummary").classList.toggle("active", chapterStatusFilter !== "all");
+    }
+    if ($$("chapterFilterBtn")) $$("chapterFilterBtn").classList.toggle("active", chapterStatusFilter !== "all");
     if (!list.length) {
       const partial = Boolean(bundle?.chapters_partial);
       grid.innerHTML = `
@@ -2091,25 +2282,97 @@ function renderDetail(bundle, opts = {}) {
     }
     grid.innerHTML = "";
     list.forEach(ch => {
-      const btn = document.createElement("button");
+      const row = document.createElement("div");
       const isLastRead = ch.chapter_id === lastRead;
       const isRead = readMap[ch.chapter_id];
-      btn.className = `chapter-btn ${isLastRead ? "current" : (isRead ? "read" : "")}`;
-      btn.innerHTML = `
-        <div class="chapter-n">Cap. ${esc(ch.chapter_number || "?")}</div>
-        <div class="chapter-meta">${esc(ch.updated_at || ch.chapter_language || "Toque para ler")}</div>`;
-      btn.addEventListener("click", () => openChapter(ch.chapter_id));
-      grid.appendChild(btn);
+      const isDownloaded = Boolean(state.downloadedChapters?.[ch.chapter_id]);
+      row.className = `chapter-row ${isLastRead ? "current" : (isRead ? "read" : "")}`;
+      row.innerHTML = `
+        <button class="chapter-main-btn" type="button">
+          <div class="chapter-n">Capítulo ${esc(ch.chapter_number || "?")}</div>
+          <div class="chapter-meta">${esc(chapterDateLabel(ch))}</div>
+        </button>
+        <button class="chapter-download-btn ${isDownloaded ? "downloaded" : ""}" type="button" title="Baixar PDF" aria-label="Baixar capítulo ${esc(ch.chapter_number || "?")} em PDF">
+          ${iconSvg(isDownloaded ? "check" : "download", 28)}
+        </button>`;
+      row.querySelector(".chapter-main-btn")?.addEventListener("click", () => openChapter(ch.chapter_id));
+      row.querySelector(".chapter-download-btn")?.addEventListener("click", (event) => {
+        event.stopPropagation();
+        requestChapterDownload(ch, event.currentTarget);
+      });
+      grid.appendChild(row);
     });
   }
 
   function getFilteredSorted() {
     let list = chapterOrder === "desc" ? [...chapters] : [...chapters].reverse();
+    if (chapterStatusFilter === "unread") list = list.filter(ch => !readMap[ch.chapter_id]);
+    if (chapterStatusFilter === "read") list = list.filter(ch => readMap[ch.chapter_id]);
+    if (chapterStatusFilter === "downloaded") list = list.filter(ch => state.downloadedChapters?.[ch.chapter_id]);
     if (chapterFilter) list = list.filter(ch =>
       String(ch.chapter_number || "").toLowerCase().includes(chapterFilter) ||
       String(ch.chapter_language || "").toLowerCase().includes(chapterFilter)
     );
     return list;
+  }
+
+  function renderFilterSheet() {
+    document.querySelectorAll("[data-sheet-tab]").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.sheetTab === filterSheetTab);
+    });
+    const holder = $$("chapterFilterOptions");
+    if (!holder) return;
+    if (filterSheetTab === "order") {
+      holder.innerHTML = [
+        ["desc", "Mais novo primeiro"],
+        ["asc", "Mais antigo primeiro"],
+      ].map(([value, label]) => `
+        <button class="chapter-filter-option ${chapterOrder === value ? "active" : ""}" data-order-value="${value}">
+          <span class="chapter-check">${chapterOrder === value ? iconSvg("check", 15) : ""}</span>
+          <span>${esc(label)}</span>
+        </button>`).join("");
+      holder.querySelectorAll("[data-order-value]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          chapterOrder = btn.dataset.orderValue || "desc";
+          updateOrderLabel();
+          closeFilterSheet();
+          buildChapterButtons(getFilteredSorted());
+        });
+      });
+      return;
+    }
+    holder.innerHTML = [
+      ["all", "Todos"],
+      ["unread", "Não lido"],
+      ["read", "Lido"],
+      ["downloaded", "Baixado"],
+    ].map(([value, label]) => `
+      <button class="chapter-filter-option ${chapterStatusFilter === value ? "active" : ""}" data-filter-value="${value}">
+        <span class="chapter-check">${chapterStatusFilter === value ? iconSvg("check", 15) : ""}</span>
+        <span>${esc(label)}</span>
+      </button>`).join("");
+    holder.querySelectorAll("[data-filter-value]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        chapterStatusFilter = btn.dataset.filterValue || "all";
+        closeFilterSheet();
+        buildChapterButtons(getFilteredSorted());
+      });
+    });
+  }
+
+  function openFilterSheet(tab = "filter") {
+    filterSheetTab = tab;
+    renderFilterSheet();
+    $$("chapterFilterSheet")?.classList.add("open");
+  }
+
+  function closeFilterSheet() {
+    $$("chapterFilterSheet")?.classList.remove("open");
+  }
+
+  function updateOrderLabel() {
+    if ($$("chapterOrderIcon")) $$("chapterOrderIcon").textContent = chapterOrder === "desc" ? "↓" : "↑";
+    if ($$("chapterOrderLabel")) $$("chapterOrderLabel").textContent = chapterOrder === "desc" ? "Mais novo" : "Mais antigo";
   }
 
   buildChapterButtons(getFilteredSorted());
@@ -2120,9 +2383,28 @@ function renderDetail(bundle, opts = {}) {
   const orderBtn = $$("chapterOrderBtn");
   if (orderBtn) orderBtn.addEventListener("click", () => {
     chapterOrder = chapterOrder === "desc" ? "asc" : "desc";
-    $$("chapterOrderIcon").textContent = chapterOrder === "desc" ? "↓" : "↑";
-    $$("chapterOrderLabel").textContent = chapterOrder === "desc" ? "Mais novo" : "Mais antigo";
+    updateOrderLabel();
     buildChapterButtons(getFilteredSorted());
+  });
+
+  $$("chapterSearchBtn")?.addEventListener("click", () => {
+    const row = $$("chapterSearchRow");
+    const open = !row?.classList.contains("open");
+    row?.classList.toggle("open", open);
+    $$("chapterSearchBtn")?.classList.toggle("active", open);
+    if (open) setTimeout(() => $$("chapterFilterInput")?.focus(), 40);
+  });
+  $$("chapterFilterBtn")?.addEventListener("click", () => openFilterSheet("filter"));
+  $$("chapterFilterSummary")?.addEventListener("click", () => openFilterSheet("filter"));
+  $$("chapterFilterClose")?.addEventListener("click", closeFilterSheet);
+  document.querySelectorAll("[data-sheet-tab]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      filterSheetTab = btn.dataset.sheetTab || "filter";
+      renderFilterSheet();
+    });
+  });
+  $$("chapterBulkDownloadBtn")?.addEventListener("click", () => {
+    toast("Para baixar a obra inteira, use o comando /pdfmanga no chat do bot. Pelo webapp, use a seta de cada capítulo.");
   });
 
   const languageSelect = $$("chapterLanguageSelect");
@@ -2228,7 +2510,11 @@ function renderChapter(payload, options = {}) {
       </div>
     </div>`;
 
-  const backFn = () => openTitle(payload.title_id, false, { route: "chapters" });
+  const backFn = () => {
+    closeReaderModeDialog();
+    closeReaderSettings();
+    openTitle(state.currentTitleId || payload.title_id, false, { route: "chapters" });
+  };
   $$("readerBackToTitle").onclick = backFn;
   $$("readerFooterBack").onclick = backFn;
   if ($$("readerPrev")) $$("readerPrev").onclick = () => openChapter(prev);
@@ -2275,18 +2561,37 @@ function isReaderSingleMode() {
 
 function readerModeOptionsHtml() {
   const options = [
-    ["webtoon", "Padrao", "Webtoon"],
-    ["single-ltr", "Horizontal unico (LTR)", ""],
-    ["single-rtl", "Horizontal unico (RTL)", ""],
-    ["vertical", "Vertical continuo", ""],
-    ["webtoon", "Webtoon", ""],
+    ["webtoon", "Padrão", "Webtoon"],
+    ["single-ltr", "Horizontal único (LTR)", ""],
+    ["single-rtl", "Horizontal único (RTL)", ""],
+    ["vertical", "Vertical contínuo", ""],
   ];
-  return options.map(([mode, name, sub], index) => `
-    <button class="reader-mode-option ${state.readerMode === mode && (mode !== "webtoon" || index === 0) ? "active" : ""}" data-reader-mode="${mode}">
+  return options.map(([mode, name, sub]) => `
+    <button class="reader-mode-option ${state.readerMode === mode ? "active" : ""}" data-reader-mode="${mode}">
       <span class="reader-radio"></span>
       <span><span class="reader-mode-name">${esc(name)}</span>${sub ? `<span class="reader-mode-sub">${esc(sub)}</span>` : ""}</span>
       <span></span>
     </button>`).join("");
+}
+
+function updateReaderModeSelection() {
+  document.querySelectorAll("[data-reader-mode]").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.readerMode === state.readerMode);
+  });
+  if ($$("readerModeCurrent")) $$("readerModeCurrent").textContent = readerModeLabel();
+}
+
+function readerAutoScrollLabel() {
+  return state.readerAutoScroll ? "Ativado" : "Desativado";
+}
+
+function updateReaderAutoScrollUI() {
+  const row = $$("readerSheetAuto");
+  if (!row) return;
+  const sub = row.querySelector(".reader-setting-sub");
+  const sw = row.querySelector(".reader-switch");
+  if (sub) sub.textContent = readerAutoScrollLabel();
+  if (sw) sw.classList.toggle("active", state.readerAutoScroll);
 }
 
 function setReaderControls(visible) {
@@ -2320,9 +2625,17 @@ function jumpReaderPage(page, opts = {}) {
   if (opts.save !== false) {
     const payload = state.currentReaderPayload;
     if (payload) {
-      const tb = state.cache.titles.get(`${payload.title_id}:${state.chapterLang}`);
-      const savedCover = tb?.cover_url || getProgress(payload.title_id)?.cover_url || "";
-      persistProgress({ title_id: payload.title_id, title_name: payload.title, chapter_id: payload.chapter_id, chapter_number: payload.chapter_number, page_index: nextPage, total_pages: total, cover_url: savedCover }).catch(() => {});
+      const article = target || document.querySelector(`.reader-page-item[data-page="${nextPage}"]`);
+      const titleId = article?.dataset.titleId || payload.title_id;
+      const chapterId = article?.dataset.chapterId || payload.chapter_id;
+      const chapterNumber = article?.dataset.chapterNumber || payload.chapter_number;
+      const titleName = article?.dataset.titleName || payload.title;
+      const localPage = Number(article?.dataset.localPage || nextPage);
+      const localTotal = Number(article?.dataset.localTotal || total);
+      updateReaderChapterHeader({ titleName, chapterNumber, localPage, localTotal });
+      const tb = state.cache.titles.get(`${titleId}:${state.chapterLang}`);
+      const savedCover = tb?.cover_url || getProgress(titleId)?.cover_url || "";
+      persistProgress({ title_id: titleId, title_name: titleName, chapter_id: chapterId, chapter_number: chapterNumber, page_index: localPage, total_pages: localTotal, cover_url: savedCover }).catch(() => {});
     }
   }
 }
@@ -2332,9 +2645,10 @@ function applyReaderMode() {
   if (!shell) return;
   shell.classList.toggle("reader-mode-single", isReaderSingleMode());
   shell.classList.toggle("reader-mode-webtoon", !isReaderSingleMode());
-  if ($$("readerModeCurrent")) $$("readerModeCurrent").textContent = readerModeLabel();
+  updateReaderModeSelection();
   const sentinel = $$("readerNextSentinel");
   if (sentinel) sentinel.style.display = isReaderSingleMode() ? "none" : "";
+  if (state.readerAutoScroll) startReaderAutoScroll();
 }
 
 function toggleReaderFit() {
@@ -2345,7 +2659,7 @@ function toggleReaderFit() {
     shell.classList.toggle("reader-fit-height", state.readerFit === "height");
   }
   if ($$("readerFitBtn")) $$("readerFitBtn").classList.toggle("active", state.readerFit === "height");
-  if ($$("readerFitCurrent")) $$("readerFitCurrent").textContent = state.readerFit === "height" ? "Altura da tela" : "Largura da tela";
+  if ($$("readerFitCurrent")) $$("readerFitCurrent").textContent = state.readerFit === "height" ? "Centralizada" : "Largura total";
   setReaderControls(true);
 }
 
@@ -2358,10 +2672,40 @@ function closeReaderSettings() {
   $$("readerSettingsSheet").classList.remove("open");
 }
 function openReaderModeDialog() {
+  updateReaderModeSelection();
   $$("readerModeDialog").classList.add("open");
 }
 function closeReaderModeDialog() {
   $$("readerModeDialog").classList.remove("open");
+}
+
+function stopReaderAutoScroll() {
+  if (state.readerAutoScrollTimer) {
+    clearInterval(state.readerAutoScrollTimer);
+    state.readerAutoScrollTimer = null;
+  }
+}
+
+function startReaderAutoScroll() {
+  stopReaderAutoScroll();
+  if (!state.readerAutoScroll || state.currentPage !== "readerPage") return;
+  state.readerAutoScrollTimer = setInterval(() => {
+    if (!state.readerAutoScroll || state.readerControlsVisible || $$("readerSettingsSheet")?.classList.contains("open") || $$("readerModeDialog")?.classList.contains("open")) return;
+    if (isReaderSingleMode()) {
+      const total = readerTotalPages();
+      if (state.readerCurrentPage < total) jumpReaderPage(state.readerCurrentPage + 1, { behavior: "auto" });
+      return;
+    }
+    window.scrollBy({ top: 1.6, left: 0, behavior: "auto" });
+  }, isReaderSingleMode() ? 5200 : 32);
+}
+
+function toggleReaderAutoScroll() {
+  saveReaderAutoScroll(!state.readerAutoScroll);
+  updateReaderAutoScrollUI();
+  if (state.readerAutoScroll) startReaderAutoScroll();
+  else stopReaderAutoScroll();
+  setReaderControls(true);
 }
 
 function attachReaderControls(payload, pages) {
@@ -2376,12 +2720,13 @@ function attachReaderControls(payload, pages) {
   $$("readerTapLeft").onclick = () => isReaderSingleMode() ? goBy(-1) : setReaderControls(true);
   $$("readerTapRight").onclick = () => isReaderSingleMode() ? goBy(1) : setReaderControls(true);
   $$("readerPageRange").oninput = (event) => jumpReaderPage(event.target.value);
-  $$("readerBookmarkBtn").onclick = () => { jumpReaderPage(state.readerCurrentPage); toast(`Pagina ${state.readerCurrentPage} salva.`); };
+  $$("readerBookmarkBtn").onclick = () => { jumpReaderPage(state.readerCurrentPage); toast(`Página ${state.readerCurrentPage} salva.`); };
   $$("readerModeBtn").onclick = openReaderModeDialog;
   $$("readerSettingsBtn").onclick = openReaderSettings;
   $$("readerOpenSettings").onclick = openReaderSettings;
   $$("readerSheetMode").onclick = () => { closeReaderSettings(); openReaderModeDialog(); };
   $$("readerSheetFit").onclick = toggleReaderFit;
+  $$("readerSheetAuto").onclick = toggleReaderAutoScroll;
   $$("readerFitBtn").onclick = toggleReaderFit;
   $$("readerSheetBackdrop").onclick = closeReaderSettings;
   $$("readerModeCancel").onclick = closeReaderModeDialog;
@@ -2391,20 +2736,68 @@ function attachReaderControls(payload, pages) {
   document.querySelectorAll("[data-reader-mode]").forEach(btn => {
     btn.addEventListener("click", () => {
       saveReaderMode(btn.dataset.readerMode);
-      closeReaderModeDialog();
       applyReaderMode();
+      closeReaderModeDialog();
       jumpReaderPage(Math.min(state.readerCurrentPage, total), { behavior: "auto", save: false });
       setReaderControls(true);
     });
   });
+  updateReaderAutoScrollUI();
+  if (state.readerAutoScroll) startReaderAutoScroll();
 }
 
 function chapterLabel(payload) {
-  return `Capitulo ${payload?.chapter_number || "?"}`;
+  return `Capítulo ${payload?.chapter_number || "?"}`;
 }
 
 function readerTotalPages() {
   return document.querySelectorAll(".reader-page-item img").length || 1;
+}
+
+function flatTitleChapters(titleId = state.currentTitleId) {
+  const bundle = state.currentTitleBundle || state.cache.titles.get(`${titleId}:${state.chapterLang}`);
+  const raw = Array.isArray(bundle?.chapters) ? bundle.chapters : [];
+  return raw.flatMap(entry => Array.isArray(entry?.chapters) ? entry.chapters : [entry]).filter(ch => ch?.chapter_id);
+}
+
+function findAdjacentChapterId(payload, direction) {
+  const chapters = flatTitleChapters(payload?.title_id);
+  if (!chapters.length) return "";
+  const sorted = [...chapters].sort((a, b) => extractChapterNum(a) - extractChapterNum(b));
+  const currentId = String(payload?.chapter_id || "");
+  let index = sorted.findIndex(ch => String(ch.chapter_id) === currentId);
+  if (index < 0) {
+    const currentNum = extractChapterNum({ chapter_number: payload?.chapter_number });
+    index = sorted.findIndex(ch => extractChapterNum(ch) === currentNum);
+  }
+  if (index < 0) return "";
+  const next = direction === "next" ? sorted[index + 1] : sorted[index - 1];
+  return next?.chapter_id || "";
+}
+
+function resolveReaderNav(payload) {
+  return {
+    prev: payload?.previous_chapter?.chapter_id || findAdjacentChapterId(payload, "prev"),
+    next: payload?.next_chapter?.chapter_id || findAdjacentChapterId(payload, "next"),
+  };
+}
+
+function readerEndStateHtml(payload) {
+  return `<div class="reader-end-state">
+    <div>
+      <div>Concluido:<br>${esc(chapterLabel(payload))}</div>
+      <span class="reader-end-muted">Não há próximo capítulo</span>
+    </div>
+  </div>`;
+}
+
+function updateReaderChapterHeader(meta = {}) {
+  const title = meta.titleName || state.currentReaderPayload?.title || "Manga";
+  const chapter = meta.chapterNumber || state.currentReaderPayload?.chapter_number || "?";
+  const page = Number(meta.localPage || state.readerCurrentPage || 1);
+  const total = Number(meta.localTotal || readerTotalPages());
+  if ($$("readerTitleText")) $$("readerTitleText").textContent = title;
+  if ($$("readerSubText")) $$("readerSubText").textContent = `Capítulo ${chapter} - Página ${page} de ${total}`;
 }
 
 function refreshReaderRangeTotal() {
@@ -2420,7 +2813,7 @@ async function appendNextReaderChapter(nextChapterId, previousPayload) {
   state.readerAutoLoading = true;
 
   const sentinel = $$("readerNextSentinel");
-  if (sentinel) sentinel.textContent = "Carregando proximo capitulo...";
+  if (sentinel) sentinel.textContent = "Carregando próximo capítulo...";
 
   try {
     const key = `${String(nextChapterId)}:${state.chapterLang}`;
@@ -2432,6 +2825,7 @@ async function appendNextReaderChapter(nextChapterId, previousPayload) {
 
     state.readerLoadedChapters.add(payload.chapter_id);
     const pages = Array.isArray(payload.images) ? payload.images : [];
+    const nav = resolveReaderNav(payload);
     const container = $$("readerPages");
     const insertBefore = $$("readerNextSentinel");
     const firstIndex = readerTotalPages() + 1;
@@ -2444,8 +2838,8 @@ async function appendNextReaderChapter(nextChapterId, previousPayload) {
         </div>
       </div>
       ${pages.map((img, i) => `
-        <article class="reader-page-item" data-page="${firstIndex + i}" data-title-id="${esc(payload.title_id || "")}" data-chapter-id="${esc(payload.chapter_id || "")}" data-chapter-number="${esc(payload.chapter_number || "")}" data-title-name="${esc(payload.title || "")}">
-          <img src="${esc(img)}" alt="Pagina ${firstIndex + i}" loading="lazy" decoding="async" data-index="${firstIndex + i}" />
+        <article class="reader-page-item" data-page="${firstIndex + i}" data-local-page="${i + 1}" data-local-total="${pages.length}" data-title-id="${esc(payload.title_id || "")}" data-chapter-id="${esc(payload.chapter_id || "")}" data-chapter-number="${esc(payload.chapter_number || "")}" data-title-name="${esc(payload.title || "")}">
+          <img src="${esc(img)}" alt="Página ${firstIndex + i}" loading="lazy" decoding="async" data-index="${firstIndex + i}" />
         </article>`).join("")}`;
 
     const fragment = document.createRange().createContextualFragment(html);
@@ -2456,14 +2850,14 @@ async function appendNextReaderChapter(nextChapterId, previousPayload) {
       state.chapterObserver?.observe(img);
     });
 
-    const nextId = payload.next_chapter?.chapter_id || "";
+    const nextId = nav.next || "";
     if (insertBefore) {
       if (nextId) {
         insertBefore.dataset.nextChapterId = nextId;
         insertBefore.dataset.previousChapterId = payload.chapter_id || "";
-        insertBefore.textContent = "Continue rolando para o proximo capitulo";
+        insertBefore.textContent = "Continue rolando para o próximo capítulo";
       } else {
-        insertBefore.remove();
+        insertBefore.outerHTML = readerEndStateHtml(payload);
       }
     }
     if ($$("readerNextChapter")) {
@@ -2473,7 +2867,7 @@ async function appendNextReaderChapter(nextChapterId, previousPayload) {
     refreshReaderRangeTotal();
   } catch (err) {
     console.error("NEXT CHAPTER:", err);
-    if (sentinel) sentinel.textContent = "Nao foi possivel carregar o proximo capitulo.";
+    if (sentinel) sentinel.textContent = "Não foi possível carregar o próximo capítulo.";
   } finally {
     state.readerAutoLoading = false;
   }
@@ -2498,8 +2892,7 @@ function renderChapter(payload, options = {}) {
   state.currentTitleId = payload.title_id;
 
   const pages = Array.isArray(payload.images) ? payload.images : [];
-  const prev = payload.previous_chapter?.chapter_id || "";
-  const next = payload.next_chapter?.chapter_id || "";
+  const { prev, next } = resolveReaderNav(payload);
   const savedPage = Number(getProgress(payload.title_id)?.page_index || 1);
   state.readerCurrentPage = Math.max(1, Math.min(savedPage, Math.max(1, pages.length)));
   state.readerLoadedChapters = new Set([payload.chapter_id]);
@@ -2509,24 +2902,25 @@ function renderChapter(payload, options = {}) {
     <div class="reader-shell reader-mode-${isReaderSingleMode() ? "single" : "webtoon"} reader-fit-${esc(state.readerFit)}" id="readerShell">
       <div class="reader-pages" id="readerPages">
         ${pages.map((img, i) => `
-          <article class="reader-page-item ${isReaderSingleMode() && i + 1 === state.readerCurrentPage ? "active" : ""}" data-page="${i + 1}" data-title-id="${esc(payload.title_id || "")}" data-chapter-id="${esc(payload.chapter_id || "")}" data-chapter-number="${esc(payload.chapter_number || "")}" data-title-name="${esc(payload.title || "")}">
-            <img src="${esc(img)}" alt="Pagina ${i + 1}" loading="${i < 3 ? "eager" : "lazy"}" decoding="${i < 3 ? "sync" : "async"}" data-index="${i + 1}" />
+          <article class="reader-page-item ${isReaderSingleMode() && i + 1 === state.readerCurrentPage ? "active" : ""}" data-page="${i + 1}" data-local-page="${i + 1}" data-local-total="${pages.length}" data-title-id="${esc(payload.title_id || "")}" data-chapter-id="${esc(payload.chapter_id || "")}" data-chapter-number="${esc(payload.chapter_number || "")}" data-title-name="${esc(payload.title || "")}">
+            <img src="${esc(img)}" alt="Página ${i + 1}" loading="${i < 3 ? "eager" : "lazy"}" decoding="${i < 3 ? "sync" : "async"}" data-index="${i + 1}" />
           </article>`).join("")}
-        ${next && !isReaderSingleMode() ? `<div class="reader-next-sentinel" id="readerNextSentinel" data-next-chapter-id="${esc(next)}">Continue rolando para o proximo capitulo</div>` : ""}
+        ${next && !isReaderSingleMode() ? `<div class="reader-next-sentinel" id="readerNextSentinel" data-next-chapter-id="${esc(next)}">Continue rolando para o próximo capítulo</div>` : ""}
+        ${!next && !isReaderSingleMode() ? readerEndStateHtml(payload) : ""}
       </div>
       <div class="reader-tap-zone" id="readerTapZone">
-        <button class="reader-hit left" id="readerTapLeft" aria-label="Pagina anterior"></button>
+        <button class="reader-hit left" id="readerTapLeft" aria-label="Página anterior"></button>
         <button class="reader-hit center" id="readerTapCenter" aria-label="Mostrar controles"></button>
-        <button class="reader-hit right" id="readerTapRight" aria-label="Proxima pagina"></button>
+        <button class="reader-hit right" id="readerTapRight" aria-label="Próxima página"></button>
       </div>
       <div class="reader-ui reader-top-ui">
         <div class="reader-top-inner">
-          <button class="reader-round-btn" id="readerBackToTitle" title="Capitulos">
+          <button class="reader-round-btn" id="readerBackToTitle" title="Capítulos">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="m15 18-6-6 6-6"/></svg>
           </button>
           <div class="reader-title-box">
-            <div class="reader-title-text">${esc(payload.title || "Manga")}</div>
-            <div class="reader-sub-text">Capitulo ${esc(payload.chapter_number || "?")} - ${pages.length} paginas</div>
+            <div class="reader-title-text" id="readerTitleText">${esc(payload.title || "Manga")}</div>
+            <div class="reader-sub-text" id="readerSubText">Capítulo ${esc(payload.chapter_number || "?")} - Página ${state.readerCurrentPage} de ${pages.length}</div>
           </div>
           <button class="reader-round-btn" id="readerOpenSettings" title="Configuracoes">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
@@ -2535,7 +2929,7 @@ function renderChapter(payload, options = {}) {
       </div>
       <div class="reader-ui reader-bottom-ui">
         <div class="reader-page-nav">
-          <button class="reader-round-btn" id="readerPrevChapter" ${prev ? "" : "disabled"} title="Capitulo anterior">
+          <button class="reader-round-btn" id="readerPrevChapter" ${prev ? "" : "disabled"} title="Capítulo anterior">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2v12H7V6Zm3.5 6 7.5 6V6l-7.5 6Z"/></svg>
           </button>
           <div class="reader-slider-wrap">
@@ -2543,14 +2937,14 @@ function renderChapter(payload, options = {}) {
             <input class="reader-range" id="readerPageRange" type="range" min="1" max="${Math.max(1, pages.length)}" value="${state.readerCurrentPage}" />
             <div class="reader-page-num" id="readerPageTotal">${pages.length}</div>
           </div>
-          <button class="reader-round-btn" id="readerNextChapter" ${next ? "" : "disabled"} title="Proximo capitulo">
+          <button class="reader-round-btn" id="readerNextChapter" ${next ? "" : "disabled"} title="Próximo capítulo">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M15 6h2v12h-2V6Zm-9 0v12l7.5-6L6 6Z"/></svg>
           </button>
         </div>
         <div class="reader-tool-dock">
-          <button class="reader-tool-btn" id="readerBookmarkBtn" title="Salvar pagina"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
+          <button class="reader-tool-btn" id="readerBookmarkBtn" title="Salvar página"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
           <button class="reader-tool-btn" id="readerModeBtn" title="Modo de leitura"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></button>
-          <button class="reader-tool-btn ${state.readerFit === "height" ? "active" : ""}" id="readerFitBtn" title="Ajuste da pagina"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h16M12 4v16"/><path d="m8 8-4 4 4 4M16 8l4 4-4 4"/></svg></button>
+          <button class="reader-tool-btn ${state.readerFit === "height" ? "active" : ""}" id="readerFitBtn" title="Ajuste da página"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h16M12 4v16"/><path d="m8 8-4 4 4 4M16 8l4 4-4 4"/></svg></button>
           <button class="reader-tool-btn" id="readerSettingsBtn" title="Configuracoes"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
         </div>
       </div>
@@ -2565,13 +2959,13 @@ function renderChapter(payload, options = {}) {
           </button>
           <button class="reader-setting-row" id="readerSheetFit">
             <span class="reader-setting-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h16M12 4v16"/><path d="m8 8-4 4 4 4M16 8l4 4-4 4"/></svg></span>
-            <span><span class="reader-setting-label">Ajuste da pagina</span><span class="reader-setting-sub" id="readerFitCurrent">${state.readerFit === "height" ? "Altura da tela" : "Largura da tela"}</span></span>
+            <span><span class="reader-setting-label">Ajuste da página</span><span class="reader-setting-sub" id="readerFitCurrent">${state.readerFit === "height" ? "Centralizada" : "Largura total"}</span></span>
             <span></span>
           </button>
           <button class="reader-setting-row" id="readerSheetAuto">
             <span class="reader-setting-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
-            <span><span class="reader-setting-label">Deslocamento automatico</span><span class="reader-setting-sub">Desativado</span></span>
-            <span class="reader-switch"></span>
+            <span><span class="reader-setting-label">Deslocamento automatico</span><span class="reader-setting-sub">${readerAutoScrollLabel()}</span></span>
+            <span class="reader-switch ${state.readerAutoScroll ? "active" : ""}"></span>
           </button>
         </div>
       </div>
@@ -2584,7 +2978,11 @@ function renderChapter(payload, options = {}) {
       </div>
     </div>`;
 
-  const backFn = () => openTitle(payload.title_id, false, { route: "chapters" });
+  const backFn = () => {
+    closeReaderModeDialog();
+    closeReaderSettings();
+    openTitle(state.currentTitleId || payload.title_id, false, { route: "chapters" });
+  };
   $$("readerBackToTitle").onclick = backFn;
   if ($$("readerPrevChapter")) $$("readerPrevChapter").onclick = () => prev && openChapter(prev);
   if ($$("readerNextChapter")) $$("readerNextChapter").onclick = () => next && openChapter(next);
@@ -2610,9 +3008,19 @@ function attachReaderObserver(payload) {
     if (index === lastSaved) return;
     lastSaved = index;
     if (!isReaderSingleMode()) updateReaderPageUI(index);
-    const tb = state.cache.titles.get(`${payload.title_id}:${state.chapterLang}`);
-    const savedCover = tb?.cover_url || getProgress(payload.title_id)?.cover_url || "";
-    persistProgress({ title_id: payload.title_id, title_name: payload.title, chapter_id: payload.chapter_id, chapter_number: payload.chapter_number, page_index: index, total_pages: images.length, cover_url: savedCover }).catch(() => {});
+    const article = visible.target.closest(".reader-page-item");
+    const titleId = article?.dataset.titleId || payload.title_id;
+    const chapterId = article?.dataset.chapterId || payload.chapter_id;
+    const chapterNumber = article?.dataset.chapterNumber || payload.chapter_number;
+    const titleName = article?.dataset.titleName || payload.title;
+    const localPage = Number(article?.dataset.localPage || index || 1);
+    const localTotal = Number(article?.dataset.localTotal || images.length || 1);
+    state.currentTitleId = titleId;
+    state.currentChapterId = chapterId;
+    updateReaderChapterHeader({ titleName, chapterNumber, localPage, localTotal });
+    const tb = state.cache.titles.get(`${titleId}:${state.chapterLang}`);
+    const savedCover = tb?.cover_url || getProgress(titleId)?.cover_url || "";
+    persistProgress({ title_id: titleId, title_name: titleName, chapter_id: chapterId, chapter_number: chapterNumber, page_index: localPage, total_pages: localTotal, cover_url: savedCover }).catch(() => {});
   }, { threshold: [0.3, 0.6, 0.9] });
   images.forEach(img => state.chapterObserver.observe(img));
 }
@@ -2643,16 +3051,24 @@ async function openChapter(chapterId, force = false, options = {}) {
         payload = await api(`/api/chapter/${encodeURIComponent(chapterId)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`);
         state.cache.chapters.set(key, payload);
       }
+      const titleKey = `${payload?.title_id || ""}:${state.chapterLang}`;
+      if (payload?.title_id && !state.cache.titles.has(titleKey)) {
+        try {
+          const bundle = await api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`);
+          state.cache.titles.set(titleKey, bundle);
+          state.currentTitleBundle = bundle;
+        } catch (_) {}
+      }
       renderChapter(payload, { replaceHistory: Boolean(options.replaceHistory) });
       const titleBundle = state.cache.titles.get(`${payload.title_id}:${state.chapterLang}`);
       const coverUrl = titleBundle?.cover_url || "";
       await persistProgress({ title_id: payload.title_id, title_name: payload.title, chapter_id: payload.chapter_id, chapter_number: payload.chapter_number, page_index: state.readerCurrentPage || 1, total_pages: payload.images?.length || 0, cover_url: coverUrl });
-      [payload?.next_chapter?.chapter_id, payload?.previous_chapter?.chapter_id].forEach(async (id) => {
+      const nav = resolveReaderNav(payload);
+      [nav.next, nav.prev].forEach(async (id) => {
         const chapterKey = `${id}:${state.chapterLang}`;
         if (!id || state.cache.chapters.has(chapterKey)) return;
         try { state.cache.chapters.set(chapterKey, await api(`/api/chapter/${encodeURIComponent(id)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`)); } catch (_) {}
       });
-      const titleKey = `${payload?.title_id || ""}:${state.chapterLang}`;
       if (payload?.title_id && !state.cache.titles.has(titleKey)) {
         api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`)
           .then(bundle => { state.cache.titles.set(titleKey, bundle); state.currentTitleBundle = bundle; })
@@ -2674,6 +3090,8 @@ async function openChapter(chapterId, force = false, options = {}) {
 //  NAVIGATION
 // ══════════════════════════════════════════
 function onBack() {
+  if ($$("readerModeDialog")?.classList.contains("open")) { closeReaderModeDialog(); return; }
+  if ($$("readerSettingsSheet")?.classList.contains("open")) { closeReaderSettings(); return; }
   if (state.currentPage === "readerPage" && state.currentTitleId) { openTitle(state.currentTitleId, false, { route: "chapters" }); return; }
   if (state.currentPage === "detailPage") { setPage("homePage"); syncUrl({ route: "home" }); return; }
   loadHome(true);
