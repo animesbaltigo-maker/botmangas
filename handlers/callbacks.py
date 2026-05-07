@@ -320,7 +320,7 @@ def _title_genre_hashtags(bundle: dict, user_id: int | None, limit: int = 4) -> 
     for key in ("genres", "anilist_genres", "tags"):
         value = bundle.get(key) or []
         if isinstance(value, str):
-            raw_tags.extend(part.strip() for part in value.split(","))
+            raw_tags.extend(part.strip() for part in re.split(r"[,|/•]+|\s+(?=#)", value))
         else:
             raw_tags.extend(value)
 
@@ -341,7 +341,7 @@ def _title_genre_hashtags(bundle: dict, user_id: int | None, limit: int = 4) -> 
             break
 
     if output:
-        return " ".join(output)
+        return ", ".join(output)
     fallback = {"pt": "Não informado", "en": "Not listed", "es": "No informado"}
     return fallback[lang]
 
