@@ -770,6 +770,59 @@
       font-size: 15px;
       font-weight: 750;
     }
+    .download-format-sheet {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: calc(var(--navbar-h) + 18px + var(--safe-b));
+      z-index: 270;
+      background: rgba(12,14,22,.98);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 14px;
+      box-shadow: var(--shadow-lg);
+      transform: translateY(120%);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform .2s var(--ease), opacity .2s var(--ease);
+    }
+    .download-format-sheet.open {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .download-format-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 2px 10px;
+      color: var(--text);
+      font-weight: 800;
+      font-size: 14px;
+    }
+    .download-format-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .download-format-btn {
+      min-height: 58px;
+      border-radius: var(--r-md);
+      border: 1px solid var(--line2);
+      background: var(--bg4);
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      gap: 3px;
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .download-format-btn span {
+      color: var(--text2);
+      font-size: 11px;
+      font-weight: 700;
+    }
 
     /* ── READER ── */
     body.reader-active { background: #000; overscroll-behavior: none; }
@@ -2219,36 +2272,39 @@ function chapterListLabel(chapter) {
   return `Capítulo ${clean || raw || "?"}`;
 }
 
-async function requestChapterDownload(chapter, button) {
+async function requestChapterDownload(chapter, button, format = "pdf") {
   if (!chapter?.chapter_id) return;
   if (!state.userId) {
     toast("Não consegui identificar seu ID. Abra este webapp pelo botão do bot no Telegram.");
     return;
   }
+  const formatName = String(format || "pdf").toLowerCase() === "epub" ? "epub" : "pdf";
+  const label = formatName === "epub" ? "EPUB" : "PDF";
   const original = button?.innerHTML;
   if (button) {
     button.disabled = true;
     button.classList.add("active");
-    button.innerHTML = iconSvg("download", 24);
+    button.innerHTML = iconSvg("check", 24);
   }
   let sent = false;
-  showLoading("Preparando download", "Se o acesso estiver ativo, o PDF será enviado no chat do bot.");
   try {
     const response = await api("/api/download/chapter", {
       method: "POST",
-      timeoutMs: 180000,
+      timeoutMs: 30000,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         user_id: state.userId,
+        init_data: tg?.initData || "",
         chapter_id: chapter.chapter_id,
         title_id: state.currentTitleId,
         lang: state.chapterLang,
+        format: formatName,
       }),
     });
     markChapterDownloaded(chapter.chapter_id);
     sent = true;
     if (button) button.classList.add("downloaded");
-    toast(response?.message || "Pedido recebido. O arquivo será enviado no chat do bot.");
+    toast(response?.message || `Pedido recebido. O ${label} será enviado no chat do bot.`);
   } catch (err) {
     const message = String(err?.message || "");
     if (message.includes("acesso offline") || message.includes("/plano") || message.includes("403")) {
@@ -2257,7 +2313,6 @@ async function requestChapterDownload(chapter, button) {
       toast(message || "Não consegui iniciar o download agora.");
     }
   } finally {
-    hideLoading();
     if (button) {
       button.disabled = false;
       button.classList.remove("active");
@@ -2364,6 +2419,16 @@ function renderDetail(bundle, opts = {}) {
             </div>
             <div class="chapter-filter-list" id="chapterFilterOptions"></div>
           </div>
+          <div class="download-format-sheet" id="chapterDownloadSheet" aria-hidden="true">
+            <div class="download-format-title">
+              <span id="chapterDownloadTitle">Baixar capítulo</span>
+              <button class="chapter-icon-btn" id="chapterDownloadClose" type="button" aria-label="Fechar">${iconSvg("close", 20)}</button>
+            </div>
+            <div class="download-format-options">
+              <button class="download-format-btn" type="button" data-download-format="pdf">PDF<span>arquivo pronto no chat</span></button>
+              <button class="download-format-btn" type="button" data-download-format="epub">EPUB<span>leitor digital</span></button>
+            </div>
+          </div>
         </div>
       </div>
     </div>`;
@@ -2372,6 +2437,7 @@ function renderDetail(bundle, opts = {}) {
   let chapterFilter = "";
   let chapterStatusFilter = "all";
   let filterSheetTab = "filter";
+  let pendingDownload = { chapter: null, button: null };
   const readMap = {};
   Object.values(state.localProgress).forEach(p => {
     if (p?.title_id === bundle.title_id && p?.chapter_id) readMap[p.chapter_id] = true;
@@ -2417,16 +2483,32 @@ function renderDetail(bundle, opts = {}) {
           <div class="chapter-n">${esc(chapterListLabel(ch))}</div>
           <div class="chapter-meta">${esc(chapterDateLabel(ch))}</div>
         </button>
-        <button class="chapter-download-btn ${isDownloaded ? "downloaded" : ""}" type="button" title="Baixar PDF" aria-label="Baixar capítulo ${esc(ch.chapter_number || "?")} em PDF">
+        <button class="chapter-download-btn ${isDownloaded ? "downloaded" : ""}" type="button" title="Baixar capítulo" aria-label="Baixar capítulo ${esc(ch.chapter_number || "?")}">
           ${iconSvg(isDownloaded ? "check" : "download", 28)}
         </button>`;
       row.querySelector(".chapter-main-btn")?.addEventListener("click", () => openChapter(ch.chapter_id));
       row.querySelector(".chapter-download-btn")?.addEventListener("click", (event) => {
         event.stopPropagation();
-        requestChapterDownload(ch, event.currentTarget);
+        openDownloadSheet(ch, event.currentTarget);
       });
       grid.appendChild(row);
     });
+  }
+
+  function openDownloadSheet(chapter, button) {
+    pendingDownload = { chapter, button };
+    closeFilterSheet();
+    const title = $$("chapterDownloadTitle");
+    if (title) title.textContent = `Baixar ${chapterListLabel(chapter)}`;
+    const sheet = $$("chapterDownloadSheet");
+    sheet?.classList.add("open");
+    sheet?.setAttribute("aria-hidden", "false");
+  }
+
+  function closeDownloadSheet() {
+    const sheet = $$("chapterDownloadSheet");
+    sheet?.classList.remove("open");
+    sheet?.setAttribute("aria-hidden", "true");
   }
 
   function getFilteredSorted() {
@@ -2488,6 +2570,7 @@ function renderDetail(bundle, opts = {}) {
   function openFilterSheet(tab = "filter") {
     filterSheetTab = tab;
     renderFilterSheet();
+    closeDownloadSheet();
     $$("chapterFilterSheet")?.classList.add("open");
   }
 
@@ -2522,6 +2605,15 @@ function renderDetail(bundle, opts = {}) {
   $$("chapterFilterBtn")?.addEventListener("click", () => openFilterSheet("filter"));
   $$("chapterFilterSummary")?.addEventListener("click", () => openFilterSheet("filter"));
   $$("chapterFilterClose")?.addEventListener("click", closeFilterSheet);
+  $$("chapterDownloadClose")?.addEventListener("click", closeDownloadSheet);
+  document.querySelectorAll("[data-download-format]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const { chapter, button } = pendingDownload || {};
+      const format = btn.dataset.downloadFormat || "pdf";
+      closeDownloadSheet();
+      if (chapter) requestChapterDownload(chapter, button, format);
+    });
+  });
   document.querySelectorAll("[data-sheet-tab]").forEach(btn => {
     btn.addEventListener("click", () => {
       filterSheetTab = btn.dataset.sheetTab || "filter";
