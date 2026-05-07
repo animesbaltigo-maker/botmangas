@@ -32,7 +32,7 @@ from services.catalog_client import (
 
 INLINE_LIMIT = 8
 INLINE_QUERY_TTL = 90
-INLINE_SEARCH_TIMEOUT = 4.8
+INLINE_SEARCH_TIMEOUT = 7.0
 INLINE_ENRICH_TIMEOUT = 2.2
 INLINE_ANSWER_CACHE = 6
 
@@ -136,11 +136,6 @@ async def _search_inline(query: str) -> list[dict]:
         _inline_log("search_return_catalog_cache", query=normalized, count=len(cached_catalog), elapsed_ms=round((time.perf_counter() - started) * 1000, 2))
         return _cache_set(normalized, cached_catalog[:INLINE_LIMIT])
 
-    fallback_catalog = _fallback_search(normalized)
-    if fallback_catalog:
-        _inline_log("search_return_fallback_before_network", query=normalized, count=len(fallback_catalog), elapsed_ms=round((time.perf_counter() - started) * 1000, 2))
-        return _cache_set(normalized, fallback_catalog[:INLINE_LIMIT])
-
     task = _INLINE_INFLIGHT.get(normalized.lower())
     if task:
         _inline_log("search_join_inflight", query=normalized)
@@ -173,11 +168,11 @@ async def _search_inline(query: str) -> list[dict]:
 
 def _build_description(item: dict) -> str:
     parts = []
-    status = item.get("status") or ""
+    status = _translate_status(item.get("status") or item.get("anilist_status") or "")
     if status and status != "N/A":
         parts.append(status)
     chapters = _display_chapter_count(item)
-    if chapters != "0":
+    if chapters not in {"0", "?"}:
         parts.append(f"{chapters} caps")
     elif item.get("latest_chapter"):
         parts.append(f"Cap. {item['latest_chapter']}")
@@ -286,7 +281,7 @@ def _display_chapter_count(item: dict) -> str:
             continue
     latest = str(item.get("latest_chapter") or "").strip()
     digits = "".join(ch for ch in latest if ch.isdigit())
-    return digits or "0"
+    return digits or "?"
 
 
 def _display_genres(item: dict) -> str:
@@ -307,7 +302,7 @@ def _display_genres(item: dict) -> str:
         cleaned.append(tag)
         if len(cleaned) >= 4:
             break
-    return ", ".join(cleaned) if cleaned else "N/A"
+    return ", ".join(cleaned) if cleaned else "Não informado"
 
 
 
@@ -333,7 +328,20 @@ def _merge_inline_metadata(item: dict, extra: dict | None) -> dict:
     title_id = str(merged.get("title_id") or "").strip()
     cached = get_cached_title_summary(title_id) if title_id else None
     if isinstance(cached, dict):
-        for key in ("total_chapters", "source_total_chapters", "genres", "anilist_genres", "rating", "anilist_score"):
+        for key in (
+            "cover_url",
+            "background_url",
+            "total_chapters",
+            "source_total_chapters",
+            "anilist_chapters",
+            "genres",
+            "anilist_genres",
+            "rating",
+            "anilist_score",
+            "status",
+            "anilist_status",
+            "latest_chapter",
+        ):
             if merged.get(key) in (None, "", []):
                 merged[key] = cached.get(key)
     return merged
@@ -344,12 +352,18 @@ async def _enrich_inline_results(results: list[dict]) -> list[dict]:
         title_id = str(item.get("title_id") or "").strip()
         if not title_id:
             return item
+        cached_item = _merge_inline_metadata(item, None)
+        if (
+            (cached_item.get("cover_url") or cached_item.get("background_url"))
+            and (cached_item.get("status") or cached_item.get("anilist_status"))
+        ):
+            return cached_item
         try:
             snapshot = await get_title_chapters_snapshot(title_id)
         except Exception as error:
             _inline_exception("enrich_snapshot_error", error, title_id=title_id)
             snapshot = None
-        return _merge_inline_metadata(item, snapshot)
+        return _merge_inline_metadata(cached_item, snapshot)
 
     try:
         tasks = [_load(item) for item in results[:INLINE_LIMIT]]
@@ -363,7 +377,7 @@ async def _enrich_inline_results(results: list[dict]) -> list[dict]:
 
 def _build_message_text(item: dict, *, include_image_preview: bool = True) -> str:
     title = html.escape(item.get("display_title") or item.get("title") or "Manga")
-    status = html.escape(_translate_status(_clean_display_value(item.get("status") or item.get("anilist_status"))))
+    status = html.escape(_translate_status(_clean_display_value(item.get("status") or item.get("anilist_status"), "Não informado")))
     chapters = html.escape(_display_chapter_count(item))
     rating = html.escape(_display_rating(item))
     rating_text = rating if "/" in rating else f"{rating}/10"
