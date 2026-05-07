@@ -754,9 +754,14 @@
     }
     .chapter-download-btn svg { width: 21px; height: 21px; }
     .chapter-filter-sheet {
+      inset: auto 10px calc(var(--navbar-h) + 18px + var(--safe-b));
       background: rgba(12,14,22,.98);
       border-top-color: var(--line);
-      border-radius: 22px 22px 0 0;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      max-height: 42dvh;
+      overflow: auto;
+      padding-bottom: 14px;
     }
     .chapter-filter-tabs { height: 52px; }
     .chapter-filter-tab { font-size: 13px; }
@@ -1367,6 +1372,12 @@ function saveChapterLanguage(lang) {
   state.chapterLang = normalizeLang(lang);
   try { localStorage.setItem("mb_chapter_lang_v1", state.chapterLang); } catch (_) {}
 }
+function hasTelegramAuth() {
+  return Boolean(tg?.initData);
+}
+function authUserQuery() {
+  return hasTelegramAuth() && state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : "";
+}
 function loadReaderMode() {
   const mode = localStorage.getItem("mb_reader_mode_v1") || "webtoon";
   return ["webtoon", "vertical", "single-ltr", "single-rtl"].includes(mode) ? mode : "webtoon";
@@ -1408,7 +1419,7 @@ function languageCode(option) {
   return normalizeLang(typeof option === "string" ? option : (option.code || option.language || option.lang || option.value || ""));
 }
 async function syncPreferencesWithServer() {
-  if (!state.userId) return;
+  if (!state.userId || !hasTelegramAuth()) return;
   try {
     const response = await api(`/api/preferences?user_id=${encodeURIComponent(state.userId)}`);
     const serverLang = normalizeLang(response?.chapter_language || "");
@@ -1418,7 +1429,7 @@ async function syncPreferencesWithServer() {
   } catch (_) {}
 }
 async function savePreferencesToServer() {
-  if (!state.userId) return;
+  if (!state.userId || !hasTelegramAuth()) return;
   try {
     await api("/api/preferences", {
       method: "POST",
@@ -1482,7 +1493,7 @@ function applyServerFavorites(items = []) {
 }
 
 async function syncFavoritesWithServer() {
-  if (!state.userId) return;
+  if (!state.userId || !hasTelegramAuth()) return;
   try {
     const response = await api("/api/favorites/sync", {
       method: "POST",
@@ -1530,7 +1541,7 @@ function applyServerProgress(items = []) {
 }
 
 async function syncProgressWithServer() {
-  if (!state.userId) return;
+  if (!state.userId || !hasTelegramAuth()) return;
   try {
     const response = await api("/api/progress/sync", {
       method: "POST",
@@ -2563,7 +2574,7 @@ async function openTitle(titleId, force = false, options = {}) {
     try {
       let bundle = state.cache.titles.get(key);
       if (!bundle || force) {
-        bundle = await api(`/api/title/${encodeURIComponent(titleId)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`);
+        bundle = await api(`/api/title/${encodeURIComponent(titleId)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`);
         const local = getProgress(titleId);
         if (local && !bundle.last_read) bundle.last_read = { title_id: local.title_id, title_name: local.title_name, chapter_id: local.chapter_id, chapter_number: local.chapter_number };
         state.cache.titles.set(key, bundle);
@@ -2571,7 +2582,7 @@ async function openTitle(titleId, force = false, options = {}) {
       renderDetail(bundle, { route: options.route || "detail", replaceHistory: Boolean(options.replaceHistory) });
       [bundle?.last_read?.chapter_id, bundle?.latest_chapter?.chapter_id].forEach(async (cid) => {
         if (!cid || state.cache.chapters.has(`${cid}:${state.chapterLang}`)) return;
-        try { state.cache.chapters.set(`${cid}:${state.chapterLang}`, await api(`/api/chapter/${encodeURIComponent(cid)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`)); } catch (_) {}
+        try { state.cache.chapters.set(`${cid}:${state.chapterLang}`, await api(`/api/chapter/${encodeURIComponent(cid)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`)); } catch (_) {}
       });
     } catch (err) {
       console.error("TITLE:", err);
@@ -2933,7 +2944,7 @@ async function appendNextReaderChapter(nextChapterId, previousPayload) {
     const key = `${String(nextChapterId)}:${state.chapterLang}`;
     let payload = state.cache.chapters.get(key);
     if (!payload) {
-      payload = await api(`/api/chapter/${encodeURIComponent(nextChapterId)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`);
+      payload = await api(`/api/chapter/${encodeURIComponent(nextChapterId)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`);
       state.cache.chapters.set(key, payload);
     }
 
@@ -3162,13 +3173,13 @@ async function openChapter(chapterId, force = false, options = {}) {
     try {
       let payload = state.cache.chapters.get(key);
       if (!payload || force) {
-        payload = await api(`/api/chapter/${encodeURIComponent(chapterId)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`);
+        payload = await api(`/api/chapter/${encodeURIComponent(chapterId)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`);
         state.cache.chapters.set(key, payload);
       }
       const titleKey = `${payload?.title_id || ""}:${state.chapterLang}`;
       if (payload?.title_id && !state.cache.titles.has(titleKey)) {
         try {
-          const bundle = await api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`);
+          const bundle = await api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`);
           state.cache.titles.set(titleKey, bundle);
           state.currentTitleBundle = bundle;
         } catch (_) {}
@@ -3181,10 +3192,10 @@ async function openChapter(chapterId, force = false, options = {}) {
       [nav.next, nav.prev].forEach(async (id) => {
         const chapterKey = `${id}:${state.chapterLang}`;
         if (!id || state.cache.chapters.has(chapterKey)) return;
-        try { state.cache.chapters.set(chapterKey, await api(`/api/chapter/${encodeURIComponent(id)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`)); } catch (_) {}
+        try { state.cache.chapters.set(chapterKey, await api(`/api/chapter/${encodeURIComponent(id)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`)); } catch (_) {}
       });
       if (payload?.title_id && !state.cache.titles.has(titleKey)) {
-        api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : ""}`)
+        api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`)
           .then(bundle => { state.cache.titles.set(titleKey, bundle); state.currentTitleBundle = bundle; })
           .catch(() => {});
       }
