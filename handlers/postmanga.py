@@ -526,7 +526,7 @@ def _build_caption(manga: dict) -> str:
         f"<b>Capítulos:</b> <i>{html.escape(str(chapters))}</i>\n"
         f"<b>Nota:</b> <i>{html.escape(rating_text)}</i>\n"
         f"<b>Gêneros:</b> <i>{html.escape(genres_text)}</i></blockquote>\n\n"
-        f"<b><i>Mangás Brasil | @MangasBrasil</i></b>"
+        f"Mangás Brasil | @MangasBrasil"
     )
 
 
