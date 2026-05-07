@@ -30,22 +30,27 @@ async def _download_user_avatar(context: ContextTypes.DEFAULT_TYPE, user_id: int
         return None
 
 
-def _miniapp_url(route: str) -> str:
+def _miniapp_url(route: str, user_id: int | None = None) -> str:
     base = (WEBAPP_BASE_URL or "").strip().rstrip("/")
     if not base:
         return ""
-    return f"{base}/miniapp/index.html?route={route}&page={route}&view={route}"
+    suffix = f"&user_id={int(user_id)}" if user_id else ""
+    return f"{base}/miniapp/index.html?route={route}&page={route}&view={route}{suffix}"
 
 
-def _profile_keyboard() -> InlineKeyboardMarkup | None:
-    history_url = _miniapp_url("history")
-    favorites_url = _miniapp_url("lib")
+def _profile_keyboard(user_id: int | None = None) -> InlineKeyboardMarkup | None:
+    history_url = _miniapp_url("history", user_id)
+    favorites_url = _miniapp_url("lib", user_id)
     if not history_url or not favorites_url:
         return None
 
     return InlineKeyboardMarkup(
         [
             [
+                InlineKeyboardButton(
+                    "Acompanhando",
+                    web_app=WebAppInfo(url=history_url),
+                ),
                 InlineKeyboardButton(
                     "Favoritos",
                     web_app=WebAppInfo(url=favorites_url),
@@ -77,9 +82,12 @@ def _caption(
         "👤 <b>SEU PERFIL</b>\n\n"
         f"💮 <b>ID:</b> <code>{user_id}</code>\n"
         f"🏮 <b>Nome:</b> {html.escape(name or 'Usuario')}\n\n"
+        "📊 <b>Estatísticas do WebApp</b>\n"
         f"⭐ <b>Favoritos:</b> {favorites_count}\n"
         f"✅ <b>Caps lidos:</b> {chapters_read_count}\n"
         f"📚 <b>Obras abertas:</b> {opened_titles_count}\n"
+        f"📄 <b>Páginas lidas:</b> {pages_read_count:n}\n\n"
+        f"{hint}"
     )
 
 
@@ -118,7 +126,7 @@ async def mperfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     is_private = bool(chat and chat.type == "private")
-    keyboard = _profile_keyboard() if is_private else None
+    keyboard = _profile_keyboard(user.id) if is_private else None
     await message.reply_photo(
         photo=card,
         caption=_caption(
