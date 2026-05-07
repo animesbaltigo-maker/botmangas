@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import html
 import json
+import re
 import time
 import traceback
 from datetime import datetime, timezone
@@ -43,7 +44,7 @@ STATUS_PT_MAP = {
     "hiatus": "Em hiato",
     "cancelled": "Cancelado",
     "dropped": "Cancelado",
-    "releasing": "Em lancamento",
+    "releasing": "Em lançamento",
     "finished": "Finalizado",
 }
 
@@ -290,9 +291,24 @@ def _display_chapter_count(item: dict) -> str:
 def _display_genres(item: dict) -> str:
     genres = item.get("genres") or item.get("anilist_genres") or []
     if isinstance(genres, str):
-        genres = [part.strip() for part in genres.split(",")]
-    cleaned = [str(value).strip() for value in genres if str(value).strip()]
-    return ", ".join(cleaned[:4]) if cleaned else "N/A"
+        genres = [part.strip() for part in re.split(r"[,|/•]+|\s+(?=#)", genres)]
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for value in genres:
+        label = str(value).strip().lstrip("#")
+        if not label:
+            continue
+        label = re.sub(r"\s+", "_", label)
+        tag = "#" + re.sub(r"[^\w]+", "", label, flags=re.UNICODE)
+        norm = tag.lower()
+        if tag == "#" or norm in seen:
+            continue
+        seen.add(norm)
+        cleaned.append(tag)
+        if len(cleaned) >= 4:
+            break
+    return ", ".join(cleaned) if cleaned else "N/A"
+
 
 
 def _merge_inline_metadata(item: dict, extra: dict | None) -> dict:
@@ -347,25 +363,27 @@ async def _enrich_inline_results(results: list[dict]) -> list[dict]:
 
 def _build_message_text(item: dict, *, include_image_preview: bool = True) -> str:
     title = html.escape(item.get("display_title") or item.get("title") or "Manga")
-    status = html.escape(_clean_display_value(item.get("status") or item.get("anilist_status")))
+    status = html.escape(_translate_status(_clean_display_value(item.get("status") or item.get("anilist_status"))))
     chapters = html.escape(_display_chapter_count(item))
     rating = html.escape(_display_rating(item))
+    rating_text = rating if "/" in rating else f"{rating}/10"
     genres = html.escape(_display_genres(item))
     image_url = _preview_url(item) if include_image_preview else ""
 
     text = (
         f"📚 <b>{title}</b>\n\n"
-        f"» <b>Status:</b> <i>{status}</i>\n"
-        f"» <b>Capítulos:</b> <i>{chapters}</i>\n"
-        f"» <b>Nota:</b> <i>{rating}</i>\n"
-        f"» <b>Gêneros:</b> <i>{genres}</i>\n\n"
+        f"<blockquote><b>Status:</b> <i>{status}</i>\n"
+        f"<b>Capítulos:</b> <i>{chapters}</i>\n"
+        f"<b>Nota:</b> <i>{rating_text}</i>\n"
+        f"<b>Gêneros:</b> <i>{genres}</i></blockquote>\n\n"
         "✨ <i>Escolha abaixo como quer continuar.</i>"
     )
 
     if image_url:
-        text += f'\n<a href="{html.escape(image_url, quote=True)}">\u200b</a>'
+        text += f'\n<a href="{html.escape(image_url, quote=True)}">​</a>'
 
     return text
+
 
 
 def _build_article(item: dict, index: int, *, include_thumbnail: bool = True, include_image_preview: bool = True) -> InlineQueryResultArticle | None:
