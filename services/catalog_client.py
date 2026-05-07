@@ -2515,24 +2515,8 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
 
             if pt_entries:
                 candidate_entries = pt_entries
-            elif title_id:
-                try:
-                    chapter_payload = await get_chapter_list(title_id, "pt-br")
-                except Exception:
-                    continue
-                latest = flatten_chapters(chapter_payload, "pt-br")
-                candidate_entries = [
-                    {
-                        "chapter_id": entry.get("chapter_id") or "",
-                        "chapter_url": entry.get("chapter_url") or "",
-                        "chapter_number": entry.get("chapter_number") or "",
-                        "updated_at": entry.get("updated_at") or "",
-                        "language": "pt-br",
-                    }
-                    for entry in latest[:1]
-                ]
             else:
-                candidate_entries = []
+                continue
 
             for entry in candidate_entries:
                 chapter_id = entry.get("chapter_id") or ""
@@ -2554,15 +2538,6 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
                 genres = []
                 if isinstance(summary, dict):
                     genres = summary.get("genres") or summary.get("anilist_genres") or []
-                if title_id and not genres:
-                    overview = get_cached_title_overview(title_id)
-                    if overview is None:
-                        try:
-                            overview = await get_title_overview(title_id)
-                        except Exception:
-                            overview = None
-                    if isinstance(overview, dict):
-                        genres = overview.get("genres") or overview.get("anilist_genres") or []
 
                 results.append(
                     {
