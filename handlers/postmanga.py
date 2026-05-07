@@ -131,6 +131,38 @@ def _translate_format(value: str) -> str:
     return FORMAT_PT_MAP.get(raw, raw.title())
 
 
+def _format_rating_value(value: Any) -> str:
+    text = str(value if value not in (None, "", []) else "").strip()
+    if not text:
+        return ""
+    if "/" in text:
+        return text
+    try:
+        number = float(text.replace(",", "."))
+    except (TypeError, ValueError):
+        return text
+    if number <= 0:
+        return ""
+    if number > 10:
+        number = number / 10
+    return f"{number:.1f}"
+
+
+def _display_rating(manga: dict) -> str:
+    for value in (
+        manga.get("rating"),
+        manga.get("score"),
+        manga.get("source_rating"),
+        manga.get("site_rating"),
+        manga.get("average_rating"),
+        manga.get("anilist_score"),
+    ):
+        formatted = _format_rating_value(value)
+        if formatted:
+            return formatted
+    return "0"
+
+
 def _latest_chapter_summary(manga: dict) -> dict:
     latest = manga.get("latest_chapter")
     if isinstance(latest, dict) and latest.get("chapter_id"):
@@ -485,7 +517,7 @@ def _build_caption(manga: dict) -> str:
         or "?"
     )
     status = _translate_status(manga.get("status") or manga.get("anilist_status") or "N/A")
-    rating = manga.get("rating") or manga.get("anilist_score") or manga.get("score") or "0"
+    rating = _display_rating(manga)
     rating_text = str(rating) if "/" in str(rating) else f"{rating}/10"
 
     return (
