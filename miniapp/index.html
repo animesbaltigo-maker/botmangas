@@ -193,7 +193,7 @@
       align-items: center;
       gap: 2px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 2px 8px rgba(0,0,0,0.4);
-      width: min(calc(100vw - 28px), 480px);
+      width: min(calc(100vw - 18px), 620px);
     }
 
     .nav-item {
@@ -473,16 +473,33 @@
     .updates-empty-title { font-family: var(--font-d); font-size: 18px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
     .updates-empty-text { font-size: 13px; line-height: 1.6; }
 
+    .updates-header-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+    .updates-refresh-btn { min-width: 106px; }
+    .library-updates-button {
+      width: 100%;
+      margin-top: 12px;
+      justify-content: space-between;
+      border-radius: 16px;
+      height: auto;
+      padding: 13px 14px;
+      background: linear-gradient(135deg, rgba(255,65,46,.18), rgba(255,255,255,.04));
+      border-color: rgba(255,65,46,.25);
+      box-shadow: 0 12px 34px rgba(255,65,46,.10);
+    }
+    .library-updates-button span { display: block; text-align: left; }
+    .library-updates-button small { display: block; margin-top: 3px; color: var(--text3); font-size: 11px; font-weight: 700; }
     .update-item {
       display: flex; align-items: center; gap: 14px;
-      padding: 12px 0;
-      border-bottom: 1px solid var(--line);
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,.035);
       cursor: pointer;
-      transition: opacity .15s;
+      transition: opacity .15s, transform .15s, border-color .15s, background .15s;
     }
-    .update-item:last-child { border-bottom: none; }
-    .update-item:hover { opacity: .8; }
-    .update-item:active { opacity: .6; }
+    .update-item:hover { transform: translateY(-2px); border-color: rgba(255,65,46,.28); background: rgba(255,255,255,.055); }
+    .update-item:active { opacity: .72; transform: scale(.99); }
     .update-cover {
       width: 52px; height: 74px; border-radius: 8px;
       background: var(--bg4); overflow: hidden; flex-shrink: 0;
@@ -543,6 +560,7 @@
       cursor: pointer;
     }
     .history-item:hover .history-del-btn { opacity: 1; }
+    .history-del-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
     /* ── PERFIL PAGE ── */
     .profile-page { padding-top: 0; }
@@ -584,29 +602,60 @@
     .profile-row-label { font-size: 14px; font-weight: 600; color: var(--text2); }
     .profile-row-value { font-size: 14px; font-weight: 700; color: var(--text); }
 
+    /* -- PLANO PAGE -- */
+    .plan-shell { display: grid; gap: 16px; }
+    .plan-status-card, .plan-sales-hero, .plan-option-card {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(255,255,255,.045);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+    .plan-status-card { padding: 20px; background: linear-gradient(135deg, rgba(255,65,46,.15), rgba(255,255,255,.04)); }
+    .plan-status-title { font-family: var(--font-d); font-size: clamp(24px, 7vw, 42px); font-weight: 900; letter-spacing: -.04em; margin-bottom: 12px; }
+    .plan-status-list { display: grid; gap: 10px; margin: 14px 0 18px; }
+    .plan-status-row { display: flex; justify-content: space-between; gap: 16px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .plan-status-row span:first-child { color: var(--text3); font-weight: 700; }
+    .plan-status-row span:last-child { color: var(--text); font-weight: 900; text-align: right; }
+    .plan-sales-hero { padding: 24px 20px; background:
+      radial-gradient(circle at 18% 0%, rgba(255,65,46,.28), transparent 30%),
+      radial-gradient(circle at 88% 20%, rgba(255,181,71,.14), transparent 34%),
+      rgba(255,255,255,.035);
+    }
+    .plan-sales-title { font-family: var(--font-d); font-size: clamp(30px, 9vw, 54px); font-weight: 900; line-height: .98; letter-spacing: -.055em; margin-bottom: 12px; }
+    .plan-sales-text { color: var(--text2); font-size: 15px; line-height: 1.65; max-width: 650px; }
+    .plan-benefits { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin-top: 18px; }
+    .plan-benefit { border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: rgba(0,0,0,.22); padding: 12px; font-size: 13px; color: var(--text2); font-weight: 750; }
+    .plan-options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+    .plan-option-card { padding: 16px; display: grid; gap: 12px; }
+    .plan-option-name { font-family: var(--font-d); font-size: 22px; font-weight: 900; letter-spacing: -.035em; }
+    .plan-option-price { color: var(--accent3); font-size: 14px; font-weight: 900; }
+    .plan-option-desc { color: var(--text2); font-size: 13px; line-height: 1.5; min-height: 38px; }
+
     /* ── DETAIL PAGE ── */
-    .detail-panel { background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; box-shadow: var(--shadow-lg); }
-    .detail-hero { position: relative; overflow: hidden; border-radius: 24px; }
-    .detail-bg { position: absolute; inset: -16px; background-size: cover; background-position: center; transform: scale(1.06); filter: blur(12px); opacity: .62; }
+    .detail-panel { background: transparent; border: 0; border-radius: 24px; overflow: visible; box-shadow: none; }
+    .detail-hero { position: relative; overflow: hidden; border-radius: 24px; min-height: 330px; border: 1px solid var(--line); box-shadow: var(--shadow-lg); background: #080a10; }
+    .detail-bg { position: absolute; inset: -22px; background-size: cover; background-position: center; transform: scale(1.08); filter: blur(14px) saturate(1.12); opacity: .76; }
     .detail-grad-overlay {
       position: absolute; inset: 0;
-      background: linear-gradient(0deg, rgba(0,0,0,.96) 0%, rgba(0,0,0,.82) 46%, rgba(0,0,0,.48) 100%),
-                  linear-gradient(90deg, rgba(0,0,0,.86) 0%, rgba(0,0,0,.64) 46%, rgba(0,0,0,.34) 100%);
+      background: linear-gradient(0deg, rgba(0,0,0,.88) 0%, rgba(0,0,0,.62) 52%, rgba(0,0,0,.34) 100%),
+                  linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.56) 50%, rgba(0,0,0,.22) 100%);
     }
-    .detail-inner { position: relative; z-index: 2; display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 28px; align-items: center; padding: 30px; min-height: 420px; }
-    .detail-cover { width: 100%; flex-shrink: 0; aspect-ratio: 2/3; border-radius: 18px; overflow: hidden; background: var(--bg4); border: 1px solid rgba(255,255,255,.22); box-shadow: 0 18px 55px rgba(0,0,0,.68), 0 0 32px rgba(255,65,46,.10); align-self: center; justify-self: center; }
+    .detail-inner { position: relative; z-index: 2; display: grid; grid-template-columns: 142px minmax(0,1fr); gap: 18px; align-items: center; padding: 22px; min-height: 330px; }
+    .detail-cover { width: 100%; flex-shrink: 0; aspect-ratio: 2/3; border-radius: 20px; overflow: hidden; background: var(--bg4); border: 1px solid rgba(255,255,255,.22); box-shadow: 0 18px 55px rgba(0,0,0,.68), 0 0 32px rgba(255,65,46,.10); align-self: center; justify-self: center; }
     .detail-cover img { width: 100%; height: 100%; object-fit: cover; }
     .detail-info { flex: 1; min-width: 0; padding-top: 0; }
-    .detail-title { font-family: var(--font-d); font-size: clamp(22px, 5vw, 40px); font-weight: 800; letter-spacing: -.03em; line-height: 1.0; margin-bottom: 8px; text-wrap: balance; }
+    .detail-title { font-family: var(--font-d); font-size: clamp(23px, 5.8vw, 42px); font-weight: 900; letter-spacing: -.035em; line-height: 1.02; margin-bottom: 12px; text-wrap: balance; text-shadow: 0 5px 24px rgba(0,0,0,.55); }
     .detail-alt { color: var(--text3); font-size: 12.5px; line-height: 1.5; margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .detail-meta-row, .detail-genres { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .detail-meta-row, .detail-genres { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
     .synopsis-wrap { margin-top: 8px; }
     .synopsis-text { color: var(--text2); line-height: 1.72; font-size: 13.5px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
     .synopsis-text.expanded { display: block; -webkit-line-clamp: unset; }
     .synopsis-extra-tags { display: none; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
     .synopsis-wrap.expanded .synopsis-extra-tags { display: flex; }
     .synopsis-toggle { margin-top: 6px; color: var(--accent3); font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; background: none; border: none; padding: 0; }
-    .detail-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 10px; margin-top: 22px; overflow: visible; align-items: stretch; }
+    .detail-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 0; overflow: visible; align-items: stretch; }
+    .detail-actions.two-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .detail-actions::-webkit-scrollbar { display: none; }
     .detail-actions .btn, .detail-actions .fav-heart-btn { min-width: 0; width: 100%; justify-content: center; white-space: nowrap; }
     .detail-actions .detail-extra-link { opacity: .72; grid-column: 1 / -1; max-width: 190px; }
@@ -659,7 +708,8 @@
     .news-detail-hero { width: 100%; max-height: 360px; object-fit: cover; background: var(--bg4); }
     .news-detail-body { padding: 20px; }
     .news-detail-title { font-family: var(--font-d); font-size: clamp(25px, 7vw, 44px); font-weight: 900; line-height: 1.02; letter-spacing: -.045em; margin-bottom: 12px; }
-    .news-detail-text { color: var(--text2); font-size: 15px; line-height: 1.72; white-space: pre-wrap; }
+    .news-detail-text { color: var(--text2); font-size: 15px; line-height: 1.72; }
+    .news-detail-text p { margin: 0 0 15px; }
     .news-tags { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0; }
 
     .fav-heart-btn {
@@ -718,7 +768,7 @@
     .chapter-row { width: 100%; min-height: 92px; display: grid; grid-template-columns: minmax(0, 1fr) 54px; align-items: center; gap: 12px; padding: 16px 14px 16px 18px; color: rgba(245,247,255,.9); border-top: 1px solid rgba(255,255,255,.035); text-align: left; cursor: pointer; transition: background .16s, color .16s; }
     .chapter-row:first-child { border-top-color: transparent; }
     .chapter-row:active { background: rgba(255,255,255,.055); }
-    .chapter-row.read { color: rgba(245,247,255,.48); }
+    .chapter-row.read { color: #79e2aa; background: rgba(34,217,123,.055); box-shadow: inset 3px 0 0 rgba(34,217,123,.55); }
     .chapter-row.current { color: #fff; background: linear-gradient(90deg, rgba(183,201,255,.12), transparent 72%); }
     .chapter-main-btn { min-width: 0; text-align: left; color: inherit; }
     .chapter-panel.native-list .chapter-n { font-size: clamp(24px, 6vw, 36px); font-weight: 500; line-height: 1.1; letter-spacing: 0; }
@@ -801,7 +851,7 @@
     .chapter-row.current { background: rgba(255,65,46,.08); }
     .chapter-row.read { color: #79e2aa; }
     .chapter-row.read .chapter-meta { color: #79e2aa; opacity: .72; }
-    .chapter-row.read .chapter-n::before { content: "✓ "; color: #79e2aa; }
+    .chapter-row.read .chapter-n::before { content: ""; }
     .chapter-panel.native-list .chapter-n {
       font-size: 14px;
       font-weight: 800;
@@ -1082,14 +1132,17 @@
 
     /* ── RESPONSIVE ── */
     @media (max-width: 600px) {
-      .detail-inner { grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 14px; padding: 18px; min-height: 315px; text-align: left; }
+      .detail-hero { min-height: 268px; border-radius: 22px; }
+      .detail-inner { grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 12px; padding: 14px; min-height: 268px; text-align: left; }
       .detail-cover { width: 100%; border-radius: 16px; }
       .detail-info { padding-top: 0; width: 100%; }
-      .detail-title { font-size: clamp(23px, 7vw, 34px); }
+      .detail-title { font-size: clamp(22px, 7vw, 32px); margin-bottom: 9px; }
       .detail-alt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-      .detail-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .detail-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
       .detail-actions .detail-extra-link { grid-column: 1 / -1; max-width: none; }
-      .detail-actions .btn, .detail-actions .fav-heart-btn { padding-left: 10px; padding-right: 10px; font-size: 12px; }
+      .detail-actions .btn, .detail-actions .fav-heart-btn { padding-left: 6px; padding-right: 6px; font-size: 11px; height: 42px; gap: 4px; }
+      .detail-meta-row .tag-pill { font-size: 11px; padding-left: 9px; padding-right: 9px; }
+      .plan-benefits { grid-template-columns: 1fr; }
       .news-feed { grid-template-columns: 1fr; }
       .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
       .chapter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
@@ -1120,11 +1173,6 @@
         <div class="brand-logo">M</div>
         <span class="brand-name">Baltigo</span>
       </div>
-      <div class="topbar-search" id="topbarSearchBox">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input id="topbarSearchInput" placeholder="Buscar mangá..." autocomplete="off" />
-        <button class="search-clear-btn" id="topbarSearchClear">✕</button>
-      </div>
     </div>
   </header>
 
@@ -1133,16 +1181,22 @@
     <div class="lib-page-header">
       <div class="lib-page-title">Biblioteca</div>
       <div class="lib-page-sub" id="libPageSub">Seus mangás favoritos</div>
-      <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="openUpdatesPage()">Novidades dos favoritos</button>
+      <button class="btn btn-ghost library-updates-button" onclick="openUpdatesPage(true)">
+        <span>Novidades dos favoritos<small>Atualize e veja apenas capitulos novos</small></span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      </button>
     </div>
     <div id="libPageGrid"></div>
   </main>
 
   <!-- NOVIDADES PAGE -->
   <main id="updatesPage" class="page hidden">
-    <div class="updates-page-header">
-      <div class="lib-page-title">Novidades</div>
-      <div class="lib-page-sub">Capítulos novos das obras que você favorita</div>
+    <div class="updates-header-row">
+      <div>
+        <div class="lib-page-title">Novidades</div>
+        <div class="lib-page-sub">Capítulos novos das obras que você favorita</div>
+      </div>
+      <button class="btn btn-ghost btn-sm updates-refresh-btn" id="updatesRefreshBtn">Atualizar</button>
     </div>
     <div id="updatesPageList"></div>
   </main>
@@ -1327,6 +1381,15 @@
     <div class="profile-section" id="profileInfoSection"></div>
   </main>
 
+  <!-- PLANO PAGE -->
+  <main id="planPage" class="page hidden">
+    <div class="lib-page-header">
+      <div class="lib-page-title">Plano offline</div>
+      <div class="lib-page-sub" id="planPageSub">Downloads PDF/EPUB e leitura offline pelo bot</div>
+    </div>
+    <div id="planPageContent" class="plan-shell"></div>
+  </main>
+
   <!-- FLOATING BOTTOM NAVBAR -->
   <nav class="bottom-nav" id="bottomNav">
     <div class="nav-item active" id="nav-home" data-tab="home">
@@ -1364,6 +1427,16 @@
         <div class="nav-badge" id="updatesBadge"></div>
       </div>
       <span class="nav-label">Biblioteca</span>
+    </div>
+    <div class="nav-item" id="nav-history" data-tab="history">
+      <div class="nav-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M3 12a9 9 0 1 0 3-6.7"/>
+          <path d="M3 4v5h5"/>
+          <path d="M12 7v5l3 2"/>
+        </svg>
+      </div>
+      <span class="nav-label">Historico</span>
     </div>
     <div class="nav-item" id="nav-profile" data-tab="profile">
       <div class="nav-icon">
@@ -1843,7 +1916,7 @@ function syncUrl({ route = "", titleId = "", chapterId = "" } = {}, replace = fa
 // ══════════════════════════════════════════
 //  PAGE MANAGEMENT
 // ══════════════════════════════════════════
-const ALL_PAGES = ["homePage","detailPage","catalogPage","searchPage","newsPage","readerPage","historyPage","profilePage","libPage","updatesPage"];
+const ALL_PAGES = ["homePage","detailPage","catalogPage","searchPage","newsPage","readerPage","historyPage","profilePage","planPage","libPage","updatesPage"];
 
 function setPage(pageName) {
   state.currentPage = pageName;
@@ -1859,7 +1932,7 @@ function setPage(pageName) {
   });
 
   // back button: show on detail/reader; hide on main tabs
-  const mainTabs = ["homePage","catalogPage","searchPage","newsPage","historyPage","profilePage","libPage","updatesPage"];
+  const mainTabs = ["homePage","catalogPage","searchPage","newsPage","historyPage","profilePage","planPage","libPage","updatesPage"];
   $$("backBtn").classList.toggle("hidden", mainTabs.includes(pageName));
 
   // hide navbar in reader
@@ -1876,6 +1949,7 @@ function setPage(pageName) {
     newsPage: "news",
     historyPage: "history",
     profilePage: "profile",
+    planPage: "profile",
     libPage: "lib",
     updatesPage: "updates",
   };
@@ -1981,13 +2055,13 @@ window.clearSearch = clearSearch;
 function updateFavBtn(titleId) {
   document.querySelectorAll(`[data-fav-id="${CSS.escape(titleId)}"]`).forEach(btn => {
     btn.classList.toggle("faved", isFav(titleId));
-    btn.textContent = isFav(titleId) ? "❤️" : "🤍";
+    btn.textContent = isFav(titleId) ? "❤" : "♡";
   });
   const detailFavBtn = $$("detailFavBtn");
   if (detailFavBtn && detailFavBtn.dataset.titleId === titleId) {
     const faved = isFav(titleId);
     detailFavBtn.classList.toggle("faved", faved);
-    detailFavBtn.querySelector(".fav-icon").textContent = faved ? "❤️" : "🤍";
+    detailFavBtn.querySelector(".fav-icon").textContent = faved ? "❤" : "♡";
     detailFavBtn.querySelector(".fav-label").textContent = faved ? "Favoritado" : "Favoritar";
   }
   updateNavBadge();
@@ -2193,70 +2267,100 @@ function openLibPage() {
 // ══════════════════════════════════════════
 //  NOVIDADES PAGE
 // ══════════════════════════════════════════
-async function openUpdatesPage() {
+function latestChapterFromBundle(bundle) {
+  const rawChapters = Array.isArray(bundle?.chapters) ? bundle.chapters : [];
+  const flat = rawChapters.flatMap(entry => Array.isArray(entry?.chapters) ? entry.chapters : [entry]).filter(Boolean);
+  const chapters = sortChapters(flat);
+  const latest = bundle?.latest_chapter || chapters[0] || {};
+  return {
+    chapter_id: latest.chapter_id || latest.id || "",
+    chapter_number: latest.chapter_number || latest.number || "",
+    updated_at: latest.updated_at || latest.publish_at || latest.created_at || bundle?.updated_at || Date.now(),
+    chapter: latest,
+    chapter_count: chapters.length || Number(bundle?.source_total_chapters || bundle?.total_chapters || 0),
+  };
+}
+
+async function openUpdatesPage(force = false) {
   setPage("updatesPage");
   syncUrl({ route: "updates" });
 
   const favList = getFavList();
   const container = $$("updatesPageList");
+  const refreshBtn = $$("updatesRefreshBtn");
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = "Atualizando...";
+  }
 
   if (!favList.length) {
     container.innerHTML = `
       <div class="updates-empty">
-        <div class="updates-empty-icon">🔔</div>
+        <div class="updates-empty-icon"></div>
         <div class="updates-empty-title">Nenhuma obra favoritada</div>
         <div class="updates-empty-text">Favorite obras para ver novidades de capítulos aqui.</div>
       </div>`;
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = "Atualizar";
+    }
     return;
   }
 
   container.innerHTML = `<div style="color:var(--text3);font-size:13px;padding:8px 0 16px">Verificando atualizações...</div>`;
 
-  // Build update list from home cache or favorites data
   const updates = [];
-  const home = state.cache.home;
-
-  favList.forEach(fav => {
+  const checks = await Promise.allSettled(favList.map(async fav => {
     const titleId = fav.title_id || "";
-    if (!titleId) return;
-
-    // Try to get latest chapter info from various sources
-    let latestChNum = fav.latest_chapter || "";
-    let latestChId = fav.latest_chapter_id || "";
-    let updatedAt = fav.updated_at || fav.added_at || Date.now();
-
-    // Check home cache for fresher info
-    if (home) {
-      const allItems = [
-        ...(home.featured || []), ...(home.popular || []),
-        ...(home.recent_titles || []), ...(home.latest_updated || []),
-        ...(home.recent_chapters || [])
-      ];
-      const found = allItems.find(it => (it.title_id || it.id) === titleId);
-      if (found) {
-        latestChNum = found.latest_chapter || found.chapter_number || latestChNum;
-        latestChId = found.chapter_id || latestChId;
+    if (!titleId) return null;
+    const lang = normalizeLang(fav.language || state.chapterLang);
+    const key = `${String(titleId)}:${lang}`;
+    let bundle = state.cache.titles.get(key);
+    if (!bundle || force) {
+      bundle = await api(`/api/title/${encodeURIComponent(titleId)}?lang=${encodeURIComponent(lang)}${authUserQuery()}`, { timeoutMs: 45000 });
+      state.cache.titles.set(key, bundle);
+    }
+    const latest = latestChapterFromBundle(bundle);
+    if (latest.chapter_id) {
+      state.favorites[titleId] = {
+        ...fav,
+        title_id: titleId,
+        display_title: bundle?.title || fav.display_title || fav.title || "Manga",
+        title: bundle?.title || fav.title || "",
+        cover_url: bundle?.cover_url || fav.cover_url || "",
+        background_url: bundle?.background_url || bundle?.banner_url || fav.background_url || "",
+        latest_chapter: latest.chapter_number || fav.latest_chapter || "",
+        latest_chapter_id: latest.chapter_id,
+        chapter_count: latest.chapter_count || fav.chapter_count || 0,
+        language: lang,
+        updated_at: normalizeRemoteTime(latest.updated_at),
+        added_at: fav.added_at || Date.now(),
+      };
+      if (!state.seenUpdates[latest.chapter_id]) {
+        updates.push({
+          title_id: titleId,
+          title: bundle?.title || fav.display_title || fav.title || "Manga",
+          cover_url: bundle?.cover_url || fav.cover_url || "",
+          latest_chapter: latest.chapter_number,
+          chapter_id: latest.chapter_id,
+          updated_at: normalizeRemoteTime(latest.updated_at),
+          is_new: true,
+        });
       }
     }
+    return true;
+  }));
+  saveFavorites();
 
-    const isSeen = latestChId ? !!state.seenUpdates[latestChId] : true;
-
-    updates.push({
-      title_id: titleId,
-      title: fav.display_title || fav.title || "Mangá",
-      cover_url: fav.cover_url || "",
-      latest_chapter: latestChNum,
-      chapter_id: latestChId,
-      updated_at: updatedAt,
-      is_new: !isSeen && !!latestChNum,
-    });
-  });
-
-  // Sort: new ones first
-  updates.sort((a, b) => (b.is_new ? 1 : 0) - (a.is_new ? 1 : 0) || (b.updated_at || 0) - (a.updated_at || 0));
+  const failed = checks.filter(item => item.status === "rejected").length;
+  updates.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
 
   if (!updates.length) {
-    container.innerHTML = emptyState("Nenhuma atualização encontrada.", "🔔");
+    container.innerHTML = emptyState(failed ? "Nao encontrei novidades. Algumas obras nao responderam agora." : "Nenhuma novidade nova nos seus favoritos.", "");
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = "Atualizar";
+    }
     return;
   }
 
@@ -2287,11 +2391,11 @@ async function openUpdatesPage() {
     });
     container.appendChild(item);
   });
-
-  // Mark all as seen when page is opened
-  setTimeout(() => {
-    markUpdatesSeen(updates);
-  }, 3000);
+  markUpdatesSeen(updates);
+  if (refreshBtn) {
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = "Atualizar";
+  }
 }
 
 // ══════════════════════════════════════════
@@ -2340,7 +2444,9 @@ function openHistoryPage() {
           </div>
         </div>
       </div>
-      <button class="history-del-btn" title="Remover do histórico">🗑</button>
+      <button class="history-del-btn" title="Remover do histórico" aria-label="Remover do histórico">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/></svg>
+      </button>
     `;
 
     row.addEventListener("click", (e) => {
@@ -2438,7 +2544,7 @@ function openProfilePage() {
   const affiliateBtn = $$("affiliateGatewayBtn");
   if (affiliateBtn) affiliateBtn.onclick = openAffiliateGateway;
   const planBtn = $$("planSubscribeBtn");
-  if (planBtn) planBtn.onclick = openAffiliateGateway;
+  if (planBtn) planBtn.onclick = () => openPlanPage();
   loadPlanStatus().catch(() => {});
 
   setPage("profilePage");
@@ -2457,7 +2563,7 @@ async function loadPlanStatus() {
     const btn = $$("planSubscribeBtn");
     if (btn) {
       btn.textContent = data.active ? "Gerenciar plano" : "Assinar plano offline";
-      btn.onclick = () => { window.location.href = data.subscribe_url || "/affiliate"; };
+      btn.onclick = () => openPlanPage(data);
     }
   } catch (_) {
     row.innerHTML = `
@@ -2470,6 +2576,109 @@ async function loadPlanStatus() {
 function openAffiliateGateway() {
   const url = `/affiliate${state.userId ? `?user_id=${encodeURIComponent(state.userId)}&bot=${encodeURIComponent("MangasBaltigo_Bot")}` : ""}`;
   window.location.href = url;
+}
+
+function cleanPlanLabel(label = "") {
+  return String(label || "").replace(/^[^\p{L}\p{N}]+/u, "").trim() || "Plano offline";
+}
+
+function formatPlanDate(value) {
+  if (!value) return "Sem validade definida";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function remainingPlanTime(value, lifetime = false) {
+  if (lifetime) return "Vitalicio";
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return "Indefinido";
+  const diff = Math.max(0, date.getTime() - Date.now());
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  return `${days} dia(s) e ${hours}h`;
+}
+
+function planDurationLabel(planKey = "", lifetime = false) {
+  if (lifetime || planKey === "rubi") return "Vitalicio";
+  if (planKey === "bronze") return "7 dias";
+  if (planKey === "ouro") return "30 dias";
+  if (planKey === "diamante") return "365 dias";
+  return "Conforme assinatura";
+}
+
+function planOptionDescription(plan = "") {
+  return ({
+    bronze: "Ideal para testar o offline por uma semana.",
+    ouro: "Acesso mensal equilibrado para ler e baixar sem pressa.",
+    diamante: "O melhor custo para manter o acervo offline o ano todo.",
+    rubi: "Acesso vitalicio ao modo offline e downloads liberados.",
+  })[plan] || "Libera leitura offline, PDF e EPUB pelo bot.";
+}
+
+function renderCheckoutOptions(options = []) {
+  if (!Array.isArray(options) || !options.length) {
+    return `<div class="empty-state"><div class="empty-title">Planos indisponiveis</div><div class="empty-text">Nao encontrei links de assinatura configurados agora.</div></div>`;
+  }
+  return `<div class="plan-options-grid">${options.map(option => `
+    <article class="plan-option-card">
+      <div>
+        <div class="plan-option-name">${esc(cleanPlanLabel(option.label || option.plan))}</div>
+        <div class="plan-option-price">${esc(String(option.label || "").split("-").pop()?.trim() || "Assinatura offline")}</div>
+      </div>
+      <div class="plan-option-desc">${esc(planOptionDescription(option.plan))}</div>
+      <button class="btn btn-primary" onclick="window.location.href='${esc(option.url || "#")}'">Assinar agora</button>
+    </article>
+  `).join("")}</div>`;
+}
+
+async function openPlanPage(prefetched = null) {
+  setPage("planPage");
+  syncUrl({ route: "plan" });
+  const content = $$("planPageContent");
+  content.innerHTML = skeletonGrid(3);
+  let data = prefetched;
+  try {
+    if (!data) data = await api(`/api/plan/status${state.userId ? `?user_id=${encodeURIComponent(state.userId)}` : ""}`, { timeoutMs: 12000 });
+  } catch (_) {
+    data = { active: false, checkout_options: [] };
+  }
+  const userId = state.userId || "Visitante";
+  if (data.active) {
+    content.innerHTML = `
+      <section class="plan-status-card">
+        <div class="plan-status-title">Meu plano offline</div>
+        <div class="plan-status-list">
+          <div class="plan-status-row"><span>Status</span><span>ativo</span></div>
+          <div class="plan-status-row"><span>Plano</span><span>${esc(cleanPlanLabel(data.plan || "Plano offline"))}</span></div>
+          <div class="plan-status-row"><span>Duração</span><span>${esc(planDurationLabel(data.plan_key, data.is_lifetime))}</span></div>
+          <div class="plan-status-row"><span>Válido até</span><span>${esc(formatPlanDate(data.expires_at))}</span></div>
+          <div class="plan-status-row"><span>Tempo restante</span><span>${esc(remainingPlanTime(data.expires_at, data.is_lifetime))}</span></div>
+          <div class="plan-status-row"><span>ID</span><span>${esc(userId)}</span></div>
+        </div>
+        <div class="plan-sales-text">Use os botões abaixo para renovar ou falar com o suporte.</div>
+        <div class="detail-actions two-actions" style="margin-top:16px">
+          <button class="btn btn-primary" onclick="document.getElementById('planOptionsAnchor')?.scrollIntoView({behavior:'smooth'})">Renovar plano</button>
+          <button class="btn btn-ghost" onclick="window.location.href='https://t.me/MangasBaltigo_Bot'">Suporte</button>
+        </div>
+      </section>
+      <div id="planOptionsAnchor">${renderCheckoutOptions(data.checkout_options || [])}</div>
+    `;
+    return;
+  }
+  content.innerHTML = `
+    <section class="plan-sales-hero">
+      <div class="plan-sales-title">140 mil mangas no seu bolso</div>
+      <div class="plan-sales-text">Baixe obras em PDF ou EPUB, leia offline e mantenha seus capitulos favoritos sempre acessiveis pelo Telegram.</div>
+      <div class="plan-benefits">
+        <div class="plan-benefit">Downloads PDF e EPUB direto pelo bot</div>
+        <div class="plan-benefit">Leitura offline para guardar suas obras</div>
+        <div class="plan-benefit">Links rastreados pelo seu ID para liberar acesso automatico</div>
+        <div class="plan-benefit">Planos semanais, mensais, anuais e vitalicios</div>
+      </div>
+    </section>
+    ${renderCheckoutOptions(data.checkout_options || [])}
+  `;
 }
 
 // ══════════════════════════════════════════
@@ -2706,7 +2915,7 @@ async function openNewsPage(force = false) {
   }
   $$("newsFeed").innerHTML = skeletonGrid(6);
   try {
-    const data = await api("/api/news/manga", { timeoutMs: 25000 });
+    const data = await api("/api/news/jbox", { timeoutMs: 30000 });
     state.newsItems = Array.isArray(data.items) ? data.items : [];
     state.newsFetchedAt = Date.now();
     $$("newsPageSub").textContent = state.newsItems.length ? `${state.newsItems.length} novidades recentes` : "Sem novidades no momento";
@@ -2723,18 +2932,27 @@ function openNewsDetail(index = 0) {
   if (!item) return;
   setPage("newsPage");
   const tags = Array.isArray(item.tags) ? item.tags.filter(Boolean).slice(0, 8) : [];
+  const articleBody = String(item.content || item.summary || "")
+    .split(/\n{2,}/)
+    .map(p => p.trim())
+    .filter(Boolean)
+    .map(p => `<p>${esc(p)}</p>`)
+    .join("") || `<p>${esc(item.summary || "Não foi possível extrair o texto completo desta notícia.")}</p>`;
   $$("newsFeed").innerHTML = `
     <article class="news-detail">
       ${item.image ? `<img class="news-detail-hero" src="${esc(item.image)}" alt="${esc(item.title || "Notícia")}" />` : ""}
       <div class="news-detail-body">
+        <button class="btn btn-ghost btn-sm" id="newsBackBtn" style="margin-bottom:14px">Voltar as noticias</button>
         <div class="news-date">${esc(newsDateLabel(item.published_at))}</div>
         <h1 class="news-detail-title">${esc(item.title || "Notícia")}</h1>
         ${tags.length ? `<div class="news-tags">${tags.map(tag => `<span class="tag-pill">${esc(tag)}</span>`).join("")}</div>` : ""}
-        <div class="news-detail-text">${esc(item.content || item.summary || "")}</div>
-        ${item.url ? `<button class="btn btn-ghost" id="newsFullBtn" style="margin-top:18px">Ler completa</button>` : ""}
+        <div class="news-detail-text">${articleBody}</div>
       </div>
     </article>`;
-  $$("newsFullBtn")?.addEventListener("click", () => window.open(item.url, "_blank", "noopener,noreferrer"));
+  $$("newsBackBtn")?.addEventListener("click", () => {
+    $$("newsPageSub").textContent = state.newsItems.length ? `${state.newsItems.length} novidades recentes` : "Novidades de mangas atualizadas automaticamente";
+    renderNewsFeed(state.newsItems);
+  });
   $$("newsPageSub").textContent = "Leitura adaptada ao WebApp";
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -2899,9 +3117,7 @@ function renderDetail(bundle, opts = {}) {
   const local = getProgress(bundle.title_id);
   const lastRead = bundle?.last_read?.chapter_id || local?.chapter_id || "";
   const latestChapter = bundle?.latest_chapter?.chapter_id || chapters[0]?.chapter_id || "";
-  const genres = bundle?.genres || [];
-  const translatedGenres = genres.map(translateTag).filter(Boolean);
-  const description = stripHtml(bundle?.description || bundle?.anilist_description || "Sem descrição disponível.");
+  const hasContinue = Boolean(lastRead);
   const cover = bundle?.cover_url || "";
   const bg = bundle?.background_url || bundle?.banner_url || cover || "";
   const favMeta = {
@@ -2930,21 +3146,14 @@ function renderDetail(bundle, opts = {}) {
           <div class="detail-cover">${cover ? `<img src="${esc(cover)}" alt="${esc(bundle.title || "Mangá")}" loading="eager" decoding="async" />` : ""}</div>
           <div class="detail-info">
             <h1 class="detail-title">${esc(bundle.title || "Mangá")}</h1>
-            ${bundle.alternative_title ? `<div class="detail-alt">${esc(bundle.alternative_title)}</div>` : ""}
             <div class="detail-meta-row">${buildMetaPills(bundle, chapters)}</div>
-            <div class="synopsis-wrap">
-              <div class="synopsis-text" id="synopsisText">${esc(description)}</div>
-              ${translatedGenres.length ? `<div class="synopsis-extra-tags" id="synopsisExtraTags">${translatedGenres.slice(0, 14).map(g => `<span class="tag-pill">${esc(g)}</span>`).join("")}</div>` : ""}
-              ${(description.length > 260 || translatedGenres.length) ? `<button class="synopsis-toggle" id="synopsisToggle">Ver mais <span id="synopsisArrow">▼</span></button>` : ""}
-            </div>
-            <div class="detail-actions">
+            <div class="detail-actions ${hasContinue ? "" : "two-actions"}">
               ${lastRead ? `<button class="btn btn-primary" id="continueReadBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Continuar</button>` : ""}
               ${latestChapter ? `<button class="btn" id="latestChBtn">Mais recente</button>` : ""}
               <button class="fav-heart-btn ${isFav(bundle.title_id) ? "faved" : ""}" id="detailFavBtn" data-title-id="${esc(bundle.title_id)}">
-                <span class="fav-icon">${isFav(bundle.title_id) ? "❤️" : "🤍"}</span>
+                <span class="fav-icon">${isFav(bundle.title_id) ? "❤" : "♡"}</span>
                 <span class="fav-label">${isFav(bundle.title_id) ? "Favoritado" : "Favoritar"}</span>
               </button>
-              ${bundle.anilist_url ? `<a class="btn btn-ghost btn-sm detail-extra-link" href="${esc(bundle.anilist_url)}" target="_blank" rel="noreferrer">AniList ↗</a>` : ""}
             </div>
           </div>
         </div>
@@ -3306,7 +3515,12 @@ function renderChapter(payload, options = {}) {
   const backFn = () => {
     closeReaderModeDialog();
     closeReaderSettings();
-    openTitle(state.currentTitleId || payload.title_id, false, { route: "chapters" });
+    const titleId = state.currentTitleId || payload.title_id;
+    if (state.currentTitleBundle?.title_id === titleId) {
+      renderDetail(state.currentTitleBundle, { route: "chapters", replaceHistory: true });
+    } else {
+      openTitle(titleId, false, { route: "chapters", replaceHistory: true });
+    }
   };
   $$("readerBackToTitle").onclick = backFn;
   $$("readerFooterBack").onclick = backFn;
@@ -3776,7 +3990,12 @@ function renderChapter(payload, options = {}) {
   const backFn = () => {
     closeReaderModeDialog();
     closeReaderSettings();
-    openTitle(state.currentTitleId || payload.title_id, false, { route: "chapters" });
+    const titleId = state.currentTitleId || payload.title_id;
+    if (state.currentTitleBundle?.title_id === titleId) {
+      renderDetail(state.currentTitleBundle, { route: "chapters", replaceHistory: true });
+    } else {
+      openTitle(titleId, false, { route: "chapters", replaceHistory: true });
+    }
   };
   $$("readerBackToTitle").onclick = backFn;
   if ($$("readerPrevChapter")) $$("readerPrevChapter").onclick = () => prev && openChapter(prev);
@@ -3900,8 +4119,17 @@ async function openChapter(chapterId, force = false, options = {}) {
 function onBack() {
   if ($$("readerModeDialog")?.classList.contains("open")) { closeReaderModeDialog(); return; }
   if ($$("readerSettingsSheet")?.classList.contains("open")) { closeReaderSettings(); return; }
-  if (state.currentPage === "readerPage" && state.currentTitleId) { openTitle(state.currentTitleId, false, { route: "chapters" }); return; }
-  if (state.currentPage === "detailPage" || state.currentPage === "catalogPage" || state.currentPage === "searchPage" || state.currentPage === "newsPage") { setPage("homePage"); syncUrl({ route: "home" }); return; }
+  if (state.currentPage === "readerPage" && state.currentTitleId) {
+    closeReaderModeDialog();
+    closeReaderSettings();
+    if (state.currentTitleBundle?.title_id === state.currentTitleId) {
+      renderDetail(state.currentTitleBundle, { route: "chapters", replaceHistory: true });
+    } else {
+      openTitle(state.currentTitleId, false, { route: "chapters", replaceHistory: true });
+    }
+    return;
+  }
+  if (state.currentPage === "detailPage" || state.currentPage === "catalogPage" || state.currentPage === "searchPage" || state.currentPage === "newsPage" || state.currentPage === "planPage") { setPage("homePage"); syncUrl({ route: "home" }); return; }
   loadHome(true);
 }
 
@@ -3924,19 +4152,20 @@ document.querySelectorAll(".nav-item").forEach(item => {
 $$("backBtn").addEventListener("click", onBack);
 $$("brandBtn").addEventListener("click", () => loadHome());
 $$("profileBtn")?.addEventListener("click", async () => { await syncUserDataWithServer(); openProfilePage(); });
-$$("topbarSearchClear").addEventListener("click", clearSearch);
+$$("topbarSearchClear")?.addEventListener("click", clearSearch);
 
 let _searchTimer2, _searchPageTimer;
-$$("topbarSearchInput").addEventListener("input", () => {
-  const v = $$("topbarSearchInput").value.trim();
-  $$("topbarSearchClear").classList.toggle("visible", v.length > 0);
+$$("topbarSearchInput")?.addEventListener("input", () => {
+  const input = $$("topbarSearchInput");
+  const v = input?.value.trim() || "";
+  $$("topbarSearchClear")?.classList.toggle("visible", v.length > 0);
   clearTimeout(_searchTimer2);
-  if ($$("searchPageInput") && $$("searchPageInput").value !== $$("topbarSearchInput").value) $$("searchPageInput").value = $$("topbarSearchInput").value;
-  if (v.length >= 3) _searchTimer2 = setTimeout(() => doSearch(v), 850);
+  if ($$("searchPageInput") && $$("searchPageInput").value !== input?.value) $$("searchPageInput").value = input?.value || "";
+  if (v.length >= 4) _searchTimer2 = setTimeout(() => doSearch(v), 900);
   else if (!v) clearSearch();
 });
-$$("topbarSearchInput").addEventListener("keydown", e => {
-  if (e.key === "Enter") { e.preventDefault(); doSearch($$("topbarSearchInput").value); }
+$$("topbarSearchInput")?.addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); doSearch($$("topbarSearchInput")?.value || ""); }
   if (e.key === "Escape") clearSearch();
 });
 
@@ -3950,10 +4179,10 @@ $$("searchPageInput")?.addEventListener("input", () => {
   $$("searchPageClear")?.classList.toggle("visible", v.length > 0);
   if ($$("topbarSearchInput") && $$("topbarSearchInput").value !== $$("searchPageInput").value) {
     $$("topbarSearchInput").value = $$("searchPageInput").value;
-    $$("topbarSearchClear").classList.toggle("visible", v.length > 0);
+    $$("topbarSearchClear")?.classList.toggle("visible", v.length > 0);
   }
   clearTimeout(_searchPageTimer);
-  if (v.length >= 3) _searchPageTimer = setTimeout(() => doSearch(v), 850);
+  if (v.length >= 4) _searchPageTimer = setTimeout(() => doSearch(v), 900);
   else if (!v) clearSearch();
 });
 $$("searchPageInput")?.addEventListener("keydown", e => {
@@ -3964,6 +4193,7 @@ $$("searchPageClear")?.addEventListener("click", () => {
   clearSearch();
   $$("searchPageInput")?.focus();
 });
+$$("updatesRefreshBtn")?.addEventListener("click", () => openUpdatesPage(true));
 
 $$("heroPrimaryBtn").onclick = () => jumpTo("featuredSection");
 $$("heroSecondaryBtn").onclick = () => jumpTo("latestUpdatesSection");
@@ -3979,6 +4209,7 @@ window.addEventListener("popstate", async () => {
   if (boot.route === "updates") { await syncFavoritesWithServer(); openUpdatesPage(); return; }
   if (boot.route === "history") { await syncProgressWithServer(); openHistoryPage(); return; }
   if (boot.route === "profile") { await syncUserDataWithServer(); openProfilePage(); return; }
+  if (boot.route === "plan") { await syncUserDataWithServer(); openPlanPage(); return; }
   if (["manga", "manhwa", "manhua"].includes(boot.route)) { openCatalogSection(boot.route, 1); return; }
   if (boot.chapterId) { await openChapter(boot.chapterId, false, { replaceHistory: true }); return; }
   if (boot.titleId) { await openTitle(boot.titleId, false, { route: boot.route === "chapters" ? "chapters" : "detail", replaceHistory: true }); return; }
@@ -3988,7 +4219,7 @@ window.addEventListener("popstate", async () => {
 async function boot() {
   const b = getBootParams();
   if (b.lang) saveChapterLanguage(b.lang);
-  if (["lib", "updates", "history", "profile"].includes(b.route)) {
+  if (["lib", "updates", "history", "profile", "plan"].includes(b.route)) {
     await syncUserDataWithServer();
   } else {
     syncUserDataWithServer().catch(() => {});
@@ -3999,6 +4230,7 @@ async function boot() {
   if (b.route === "updates") { await loadHome(); openUpdatesPage(); return; }
   if (b.route === "history") { openHistoryPage(); return; }
   if (b.route === "profile") { openProfilePage(); return; }
+  if (b.route === "plan") { openPlanPage(); return; }
   if (["manga", "manhwa", "manhua"].includes(b.route)) { await loadHome(); openCatalogSection(b.route, 1); return; }
   if (b.chapterId) { await openChapter(b.chapterId, false, { replaceHistory: true }); return; }
   if (b.titleId) { await openTitle(b.titleId, false, { route: b.route === "chapters" ? "chapters" : "detail", replaceHistory: true }); return; }
