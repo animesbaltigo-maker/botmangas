@@ -1,3 +1,4 @@
+import asyncio
 import html
 import json
 import os
@@ -18,6 +19,7 @@ FORCED_CHANNEL_TARGET = CANAL_POSTAGEM_CAPITULOS or "@AtualizacoesOn"
 POSTED_JSON_PATH = Path(DATA_DIR) / "capitulos_postados.json"
 POSTED_KEEP_LIMIT = 1000
 AUTO_POST_PERMISSION_COOLDOWN = 30 * 60
+RECENT_CHAPTER_FETCH_TIMEOUT = 75.0
 _AUTO_POST_DISABLED_UNTIL = 0.0
 
 
@@ -203,7 +205,10 @@ async def postnovoseps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        items = await get_recent_chapters(limit=AUTO_POST_LIMIT)
+        items = await asyncio.wait_for(
+            get_recent_chapters(limit=AUTO_POST_LIMIT),
+            timeout=RECENT_CHAPTER_FETCH_TIMEOUT,
+        )
         if not items:
             await status_message.edit_text(
                 "⚠️ <b>Não encontrei capítulos recentes para postar.</b>",
@@ -247,7 +252,10 @@ async def auto_post_new_eps_job(context: ContextTypes.DEFAULT_TYPE):
 
     try:
         destination = await ensure_channel_target(context.bot, FORCED_CHANNEL_TARGET)
-        items = await get_recent_chapters(limit=AUTO_POST_LIMIT)
+        items = await asyncio.wait_for(
+            get_recent_chapters(limit=AUTO_POST_LIMIT),
+            timeout=RECENT_CHAPTER_FETCH_TIMEOUT,
+        )
         if not items:
             return
 
