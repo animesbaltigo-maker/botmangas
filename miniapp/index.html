@@ -667,6 +667,105 @@
     .chapter-check { width: 22px; height: 22px; border-radius: 4px; border: 2px solid #b7c9ff; display: grid; place-items: center; color: #101626; }
     .chapter-filter-option.active .chapter-check { background: #b7c9ff; }
 
+    .chapter-panel.native-list {
+      background: var(--bg3);
+      border-color: var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: none;
+    }
+    .chapter-topline { padding: 0 0 12px; }
+    .chapter-total {
+      font-family: var(--font-b);
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .chapter-toolbar { gap: 6px; }
+    .chapter-icon-btn {
+      width: 38px;
+      height: 38px;
+      color: var(--text2);
+      border-radius: var(--r-sm);
+    }
+    .chapter-icon-btn svg { width: 21px; height: 21px; }
+    .chapter-icon-btn.active,
+    .chapter-icon-btn:active {
+      background: var(--glass2);
+      color: var(--text);
+      border-color: var(--line2);
+    }
+    .chapter-search-row { padding: 0 0 10px; }
+    .chapter-options-row {
+      padding: 0 0 12px;
+      gap: 8px;
+    }
+    .chapter-panel.native-list .language-select {
+      height: 38px;
+      min-width: 136px;
+      border-radius: var(--r-sm);
+      border-color: rgba(79,125,255,.24);
+      background: rgba(79,125,255,.08);
+      font-size: 12px;
+    }
+    .chapter-chip {
+      height: 38px;
+      border-radius: var(--r-sm);
+      background: var(--bg4);
+      border-color: var(--line);
+      color: var(--text2);
+      font-size: 12px;
+    }
+    .chapter-chip.active {
+      color: var(--accent);
+      border-color: rgba(79,125,255,.35);
+      background: rgba(79,125,255,.10);
+    }
+    .chapter-row {
+      min-height: 60px;
+      grid-template-columns: minmax(0, 1fr) 42px;
+      padding: 10px 0;
+      border-top-color: var(--line);
+      color: var(--text);
+    }
+    .chapter-row.current {
+      background: rgba(79,125,255,.08);
+      border-radius: 12px;
+      padding-left: 10px;
+      padding-right: 6px;
+    }
+    .chapter-row.read { color: var(--text3); }
+    .chapter-panel.native-list .chapter-n {
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .chapter-panel.native-list .chapter-meta {
+      font-size: 11px;
+      margin-top: 4px;
+      color: var(--text3);
+      opacity: 1;
+    }
+    .chapter-download-btn {
+      width: 38px;
+      height: 38px;
+      color: var(--text2);
+      border-radius: var(--r-sm);
+    }
+    .chapter-download-btn svg { width: 21px; height: 21px; }
+    .chapter-filter-sheet {
+      background: rgba(12,14,22,.98);
+      border-top-color: var(--line);
+      border-radius: 22px 22px 0 0;
+    }
+    .chapter-filter-tabs { height: 52px; }
+    .chapter-filter-tab { font-size: 13px; }
+    .chapter-filter-option {
+      min-height: 52px;
+      font-size: 15px;
+      font-weight: 750;
+    }
+
     /* ── READER ── */
     body.reader-active { background: #000; overscroll-behavior: none; }
     body.reader-active::before, body.reader-active::after { opacity: 0; }
@@ -1174,7 +1273,7 @@ function timeAgo(ts) {
 //  STATE
 // ══════════════════════════════════════════
 const state = {
-  userId: String(tg?.initDataUnsafe?.user?.id || ""),
+  userId: loadLaunchUserId(),
   chapterLang: loadChapterLanguage(),
   currentPage: "home",
   currentTitleId: "",
@@ -1234,6 +1333,15 @@ function toggleFav(titleId, meta = {}) {
 }
 function getFavList() {
   return Object.values(state.favorites).sort((a, b) => (b.added_at || 0) - (a.added_at || 0));
+}
+
+function loadLaunchUserId() {
+  const fromTelegram = String(tg?.initDataUnsafe?.user?.id || "").trim();
+  if (fromTelegram) return fromTelegram;
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = String(params.get("user_id") || params.get("uid") || params.get("tg_user_id") || "").trim();
+  if (/^\d+$/.test(fromUrl)) return fromUrl;
+  return "";
 }
 
 function loadDownloadedChapters() {
@@ -2094,10 +2202,16 @@ function chapterDateLabel(chapter) {
   return String(raw);
 }
 
+function chapterListLabel(chapter) {
+  const raw = String(chapter?.chapter_number || "?").trim();
+  const clean = raw.replace(/^cap(?:ítulo|itulo)?\.?\s*/i, "").replace(/^ch(?:apter)?\.?\s*/i, "").trim();
+  return `Capítulo ${clean || raw || "?"}`;
+}
+
 async function requestChapterDownload(chapter, button) {
   if (!chapter?.chapter_id) return;
   if (!state.userId) {
-    toast("Abra pelo Telegram para baixar. O webapp precisa identificar seu ID.");
+    toast("Não consegui identificar seu ID. Abra este webapp pelo botão do bot no Telegram.");
     return;
   }
   const original = button?.innerHTML;
@@ -2289,7 +2403,7 @@ function renderDetail(bundle, opts = {}) {
       row.className = `chapter-row ${isLastRead ? "current" : (isRead ? "read" : "")}`;
       row.innerHTML = `
         <button class="chapter-main-btn" type="button">
-          <div class="chapter-n">Capítulo ${esc(ch.chapter_number || "?")}</div>
+          <div class="chapter-n">${esc(chapterListLabel(ch))}</div>
           <div class="chapter-meta">${esc(chapterDateLabel(ch))}</div>
         </button>
         <button class="chapter-download-btn ${isDownloaded ? "downloaded" : ""}" type="button" title="Baixar PDF" aria-label="Baixar capítulo ${esc(ch.chapter_number || "?")} em PDF">
