@@ -185,7 +185,7 @@ def _flatten_strings(value: Any) -> list[str]:
         text = html.unescape(value).strip()
         if not text:
             return []
-        parts = re.split(r"[|,/•]+", text)
+        parts = re.split(r"[|,/•]+|\s+(?=#)", text)
         return [p.strip() for p in parts if p.strip()]
 
     if isinstance(value, (list, tuple, set)):
@@ -474,7 +474,7 @@ def _merge_post_payload(overview: dict, search_item: dict, bundle: dict | None =
 
 
 def _build_caption(manga: dict) -> str:
-    full_title = html.escape(_pick_main_title(manga)).upper()
+    full_title = html.escape(_pick_main_title(manga))
 
     genres = _filter_display_genres(_resolve_manga_genres(manga), limit=6)
     genres_text = ", ".join(f"#{g.replace(' ', '_')}" for g in genres) if genres else "N/A"
@@ -486,24 +486,18 @@ def _build_caption(manga: dict) -> str:
         or "?"
     )
     status = _translate_status(manga.get("status") or manga.get("anilist_status") or "N/A")
-    format_name = _translate_format(manga.get("format") or manga.get("type") or manga.get("anilist_format") or "")
-    year = _resolve_year(manga)
-
-    info_lines = [
-        f"<b>Gêneros:</b> <i>{html.escape(genres_text)}</i>",
-        f"<b>Formato:</b> <i>{html.escape(format_name)}</i>",
-        f"<b>Capítulos:</b> <i>{html.escape(str(chapters))}</i>",
-        f"<b>Status:</b> <i>{html.escape(str(status))}</i>",
-    ]
-
-    if year:
-        info_lines.insert(3, f"<b>Ano:</b> <i>{html.escape(year)}</i>")
+    rating = manga.get("rating") or manga.get("anilist_score") or manga.get("score") or "0"
+    rating_text = str(rating) if "/" in str(rating) else f"{rating}/10"
 
     return (
         f"📚 <b>{full_title}</b>\n\n"
-        + "\n".join(info_lines)
-        + "\n\nMangás Brasil | @MangasBrasil"
+        f"<blockquote><b>Status:</b> <i>{html.escape(str(status))}</i>\n"
+        f"<b>Capítulos:</b> <i>{html.escape(str(chapters))}</i>\n"
+        f"<b>Nota:</b> <i>{html.escape(rating_text)}</i>\n"
+        f"<b>Gêneros:</b> <i>{html.escape(genres_text)}</i></blockquote>\n\n"
+        f"<b><i>Mangás Brasil | @MangasBrasil</i></b>"
     )
+
 
 
 def _build_keyboard(manga: dict) -> InlineKeyboardMarkup:
