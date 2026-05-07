@@ -1625,6 +1625,30 @@ async def api_save_preferences(request: Request, payload: PreferencesPayload):
     return {"ok": True, "preferences": preference}
 
 
+@app.get("/api/plan/status")
+async def api_plan_status(request: Request, user_id: str = Query("")):
+    safe_user_id = ""
+    try:
+        if user_id or _request_init_data(request):
+            safe_user_id = _authenticated_user_id(request, user_id)
+    except HTTPException:
+        safe_user_id = _safe_int_text(user_id)
+
+    active = bool(safe_user_id and is_offline_user_allowed(safe_user_id))
+    subscribe_url = f"/affiliate?user_id={safe_user_id}" if safe_user_id else "/affiliate"
+    return {
+        "ok": True,
+        "active": active,
+        "plan": "Offline ativo" if active else "Gratuito",
+        "description": (
+            "Downloads PDF/EPUB liberados pelo bot."
+            if active
+            else "Assine para liberar leitura offline e downloads pelo bot."
+        ),
+        "subscribe_url": subscribe_url,
+    }
+
+
 @app.get("/api/progress")
 async def api_get_progress(request: Request, user_id: str = Query(""), title_id: str = Query(...)):
     user_id = _authenticated_user_id(request, user_id)
