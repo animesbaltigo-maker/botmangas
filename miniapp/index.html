@@ -629,21 +629,68 @@
     .chapter-meta { font-size: 10.5px; color: var(--text3); margin-top: 3px; line-height: 1.3; }
 
     /* ── READER ── */
-    .reader-wrapper { width: 100%; min-height: 100dvh; padding-top: calc(var(--topbar-h) + var(--safe-t)); }
-    .reader-header, .reader-footer { width: 100%; max-width: 720px; margin: 0 auto; background: rgba(6,8,16,.88); border: 1px solid var(--line); backdrop-filter: blur(16px); }
-    .reader-header { padding: 12px 14px; border-radius: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-    .reader-title-text { font-family: var(--font-d); font-size: clamp(15px, 3.5vw, 22px); font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
-    .reader-sub-text { color: var(--text3); font-size: 11.5px; font-weight: 600; margin-top: 2px; }
-    .reader-header-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-
-    .reader-pages { display: flex; flex-direction: column; gap: 0; width: 100%; }
-    .reader-page-item { width: 100%; margin: 0; padding: 0; border: none; border-radius: 0; background: #000; display: block; position: relative; line-height: 0; }
-    .reader-page-item img { width: 100%; height: auto; display: block; }
-    .page-label { position: absolute; bottom: 8px; right: 10px; background: rgba(0,0,0,.55); color: rgba(255,255,255,.45); font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 5px; pointer-events: none; }
-
-    .reader-footer { margin: 16px auto calc(var(--navbar-h) + 40px + var(--safe-b)); padding: 14px; border-radius: 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
-    .reader-footer-title { font-family: var(--font-d); font-size: 14px; font-weight: 800; color: var(--text2); text-align: center; }
-    .reader-footer-nav { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; width: 100%; }
+    body.reader-active { background: #000; overscroll-behavior: none; }
+    body.reader-active::before, body.reader-active::after { opacity: 0; }
+    body.reader-active .topbar { opacity: 0; visibility: hidden; pointer-events: none; }
+    .reader-wrapper { width: 100%; min-height: 100dvh; background: #000; color: #f4f5ff; }
+    .reader-shell { position: relative; min-height: 100dvh; background: #000; }
+    .reader-pages { display: flex; flex-direction: column; gap: 0; width: 100%; min-height: 100dvh; }
+    .reader-page-item { width: 100%; margin: 0; padding: 0; border: none; border-radius: 0; background: #000; display: block; position: relative; line-height: 0; scroll-margin: 0; }
+    .reader-page-item img { width: 100%; height: auto; display: block; margin: 0 auto; user-select: none; -webkit-user-drag: none; }
+    .reader-mode-single .reader-pages { display: block; min-height: 100dvh; }
+    .reader-mode-single .reader-page-item { min-height: 100dvh; display: none; align-items: center; justify-content: center; background: #050505; }
+    .reader-mode-single .reader-page-item.active { display: flex; }
+    .reader-mode-single .reader-page-item img { width: auto; max-width: 100vw; max-height: 100dvh; object-fit: contain; }
+    .reader-fit-width .reader-page-item img { width: 100%; max-width: 100%; }
+    .reader-fit-height.reader-mode-single .reader-page-item img { width: auto; max-width: 100vw; height: auto; max-height: 100dvh; }
+    .reader-tap-zone { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+    .reader-hit { position: absolute; top: 18%; bottom: 18%; pointer-events: auto; }
+    .reader-hit.left { left: 0; width: 26%; }
+    .reader-hit.center { left: 26%; right: 26%; }
+    .reader-hit.right { right: 0; width: 26%; }
+    .reader-ui { position: fixed; left: 0; right: 0; z-index: 80; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(10px); transition: opacity .18s var(--ease), transform .18s var(--ease), visibility .18s; }
+    .reader-shell.controls-visible .reader-ui { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }
+    .reader-top-ui { top: 0; padding: calc(8px + var(--safe-t)) 10px 8px; background: linear-gradient(180deg, rgba(0,0,0,.82), rgba(0,0,0,.42), transparent); transform: translateY(-10px); }
+    .reader-top-inner { display: flex; align-items: center; gap: 10px; max-width: 980px; margin: 0 auto; }
+    .reader-round-btn { width: 42px; height: 42px; border-radius: 50%; background: rgba(10,10,12,.72); border: 1px solid rgba(255,255,255,.1); display: grid; place-items: center; color: #eef0ff; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 8px 24px rgba(0,0,0,.35); flex-shrink: 0; transition: transform .15s var(--ease), background .15s; }
+    .reader-round-btn:active { transform: scale(.9); }
+    .reader-round-btn:disabled { opacity: .36; pointer-events: none; }
+    .reader-title-box { min-width: 0; flex: 1; }
+    .reader-title-text { font-family: var(--font-d); font-size: 15px; font-weight: 800; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .reader-sub-text { color: rgba(238,240,255,.62); font-size: 11.5px; font-weight: 700; margin-top: 2px; }
+    .reader-bottom-ui { bottom: 0; padding: 8px 10px calc(12px + var(--safe-b)); background: linear-gradient(0deg, rgba(0,0,0,.86), rgba(0,0,0,.50), transparent); }
+    .reader-page-nav { display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px; gap: 10px; align-items: center; max-width: 980px; margin: 0 auto 12px; }
+    .reader-slider-wrap { min-width: 0; height: 50px; border-radius: 999px; background: rgba(8,8,10,.72); border: 1px solid rgba(255,255,255,.08); display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; align-items: center; gap: 8px; padding: 0 14px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 12px 34px rgba(0,0,0,.42); }
+    .reader-page-num { font-size: 16px; font-weight: 800; color: rgba(238,240,255,.86); text-align: center; font-variant-numeric: tabular-nums; }
+    .reader-range { width: 100%; accent-color: #a7bcff; }
+    .reader-tool-dock { max-width: 520px; margin: 0 auto; min-height: 58px; border-radius: 999px 999px 0 0; background: rgba(8,8,10,.58); border: 1px solid rgba(255,255,255,.08); border-bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; padding: 6px 18px; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+    .reader-tool-btn { height: 46px; display: grid; place-items: center; color: rgba(238,240,255,.74); border-radius: 16px; transition: background .15s, color .15s; }
+    .reader-tool-btn:active, .reader-tool-btn.active { background: rgba(255,255,255,.08); color: #fff; }
+    .reader-sheet-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.58); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s, visibility .18s; }
+    .reader-sheet-backdrop.open { opacity: 1; visibility: visible; pointer-events: auto; }
+    .reader-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; background: rgba(15,16,20,.98); border-radius: 28px 28px 0 0; padding: 24px 18px calc(22px + var(--safe-b)); border: 1px solid rgba(255,255,255,.08); box-shadow: 0 -20px 70px rgba(0,0,0,.65); transform: translateY(105%); transition: transform .22s var(--ease); max-height: 82dvh; overflow: auto; }
+    .reader-sheet.open { transform: translateY(0); }
+    .reader-sheet-inner { max-width: 640px; margin: 0 auto; }
+    .reader-sheet-title { font-size: 20px; font-weight: 800; margin-bottom: 18px; font-family: var(--font-d); }
+    .reader-setting-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 62px; color: #eef0ff; }
+    .reader-setting-icon { color: rgba(238,240,255,.74); display: grid; place-items: center; }
+    .reader-setting-label { font-size: 17px; font-weight: 700; }
+    .reader-setting-sub { color: rgba(238,240,255,.58); font-size: 13px; margin-top: 3px; }
+    .reader-switch { width: 54px; height: 30px; border-radius: 999px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.18); position: relative; }
+    .reader-switch::after { content: ''; position: absolute; width: 22px; height: 22px; border-radius: 50%; left: 4px; top: 3px; background: rgba(238,240,255,.8); transition: transform .18s; }
+    .reader-switch.active { background: rgba(79,125,255,.42); }
+    .reader-switch.active::after { transform: translateX(24px); background: #fff; }
+    .reader-mode-dialog { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center; background: rgba(0,0,0,.58); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s, visibility .18s; padding: 24px; }
+    .reader-mode-dialog.open { opacity: 1; visibility: visible; pointer-events: auto; }
+    .reader-mode-card { width: min(100%, 440px); border-radius: 28px; background: rgba(25,26,30,.98); border: 1px solid rgba(255,255,255,.08); padding: 24px 20px 18px; box-shadow: 0 24px 80px rgba(0,0,0,.7); }
+    .reader-mode-title { font-size: 24px; font-family: var(--font-d); font-weight: 800; margin-bottom: 18px; }
+    .reader-mode-option { min-height: 58px; display: grid; grid-template-columns: 32px minmax(0, 1fr) 34px; align-items: center; gap: 14px; border-radius: 16px; padding: 8px 10px; }
+    .reader-mode-option:active { background: rgba(255,255,255,.06); }
+    .reader-radio { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #a7bcff; position: relative; }
+    .reader-mode-option.active .reader-radio::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: #a7bcff; }
+    .reader-mode-name { font-size: 17px; font-weight: 750; }
+    .reader-mode-sub { font-size: 12.5px; color: rgba(238,240,255,.58); margin-top: 2px; }
+    .reader-mode-cancel { display: block; margin: 14px 4px 0 auto; color: #b9c7ff; font-size: 15px; font-weight: 800; padding: 10px; }
 
     /* ── EMPTY STATE ── */
     .empty-state { border: 1px solid var(--line); border-radius: var(--r-lg); background: rgba(255,255,255,.02); padding: 28px 20px; text-align: center; color: var(--text2); }
@@ -1020,6 +1067,11 @@ const state = {
   currentChapterId: "",
   currentTitleBundle: null,
   chapterObserver: null,
+  readerMode: loadReaderMode(),
+  readerFit: loadReaderFit(),
+  readerControlsVisible: false,
+  readerCurrentPage: 1,
+  readerUiTimer: null,
   loadingLock: 0,
   localProgress: loadLocalProgress(),
   favorites: loadFavorites(),
@@ -1076,6 +1128,30 @@ function saveChapterLanguage(lang) {
   state.chapterLang = normalizeLang(lang);
   try { localStorage.setItem("mb_chapter_lang_v1", state.chapterLang); } catch (_) {}
 }
+function loadReaderMode() {
+  const mode = localStorage.getItem("mb_reader_mode_v1") || "webtoon";
+  return ["webtoon", "vertical", "single-ltr", "single-rtl"].includes(mode) ? mode : "webtoon";
+}
+function saveReaderMode(mode) {
+  state.readerMode = ["webtoon", "vertical", "single-ltr", "single-rtl"].includes(mode) ? mode : "webtoon";
+  try { localStorage.setItem("mb_reader_mode_v1", state.readerMode); } catch (_) {}
+}
+function loadReaderFit() {
+  const fit = localStorage.getItem("mb_reader_fit_v1") || "width";
+  return ["width", "height"].includes(fit) ? fit : "width";
+}
+function saveReaderFit(fit) {
+  state.readerFit = ["width", "height"].includes(fit) ? fit : "width";
+  try { localStorage.setItem("mb_reader_fit_v1", state.readerFit); } catch (_) {}
+}
+function readerModeLabel(mode = state.readerMode) {
+  return ({
+    webtoon: "Webtoon",
+    vertical: "Vertical continuo",
+    "single-ltr": "Horizontal unico (LTR)",
+    "single-rtl": "Horizontal unico (RTL)",
+  })[mode] || "Webtoon";
+}
 function languageLabel(option) {
   if (!option) return "";
   if (typeof option === "string") return option.toUpperCase();
@@ -1126,9 +1202,11 @@ async function api(path, options = {}) {
   const { timeoutMs = 10000, ...fetchOptions } = options;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = new Headers(fetchOptions.headers || {});
+  if (tg?.initData) headers.set("X-Telegram-Init-Data", tg.initData);
   let response;
   try {
-    response = await fetch(path, { ...fetchOptions, credentials: "same-origin", signal: controller.signal });
+    response = await fetch(path, { ...fetchOptions, headers, credentials: "same-origin", signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
@@ -1299,6 +1377,7 @@ function setPage(pageName) {
 
   // hide navbar in reader
   $$("bottomNav").style.display = pageName === "readerPage" ? "none" : "";
+  document.body.classList.toggle("reader-active", pageName === "readerPage");
 
   // sync nav active state
   const tabMap = { homePage: "home", historyPage: "history", profilePage: "profile", libPage: "lib", updatesPage: "updates" };
@@ -2139,6 +2218,254 @@ function attachReaderObserver(payload) {
   images.forEach(img => state.chapterObserver.observe(img));
 }
 
+function isReaderSingleMode() {
+  return state.readerMode === "single-ltr" || state.readerMode === "single-rtl";
+}
+
+function readerModeOptionsHtml() {
+  const options = [
+    ["webtoon", "Padrao", "Webtoon"],
+    ["single-ltr", "Horizontal unico (LTR)", ""],
+    ["single-rtl", "Horizontal unico (RTL)", ""],
+    ["vertical", "Vertical continuo", ""],
+    ["webtoon", "Webtoon", ""],
+  ];
+  return options.map(([mode, name, sub], index) => `
+    <button class="reader-mode-option ${state.readerMode === mode && (mode !== "webtoon" || index === 0) ? "active" : ""}" data-reader-mode="${mode}">
+      <span class="reader-radio"></span>
+      <span><span class="reader-mode-name">${esc(name)}</span>${sub ? `<span class="reader-mode-sub">${esc(sub)}</span>` : ""}</span>
+      <span>${mode === "single-ltr" || mode === "single-rtl" ? "↔" : "↧"}</span>
+    </button>`).join("");
+}
+
+function setReaderControls(visible) {
+  const shell = $$("readerShell");
+  if (!shell) return;
+  state.readerControlsVisible = Boolean(visible);
+  shell.classList.toggle("controls-visible", state.readerControlsVisible);
+  clearTimeout(state.readerUiTimer);
+  if (state.readerControlsVisible) {
+    state.readerUiTimer = setTimeout(() => setReaderControls(false), 4200);
+  }
+}
+
+function updateReaderPageUI(page) {
+  const total = document.querySelectorAll(".reader-page-item").length || 1;
+  const nextPage = Math.max(1, Math.min(Number(page || 1), total));
+  state.readerCurrentPage = nextPage;
+  if ($$("readerPageNow")) $$("readerPageNow").textContent = String(nextPage);
+  if ($$("readerPageRange")) $$("readerPageRange").value = String(nextPage);
+  document.querySelectorAll(".reader-page-item").forEach(item => {
+    item.classList.toggle("active", Number(item.dataset.page || 0) === nextPage);
+  });
+}
+
+function jumpReaderPage(page, opts = {}) {
+  const total = document.querySelectorAll(".reader-page-item").length || 1;
+  const nextPage = Math.max(1, Math.min(Number(page || 1), total));
+  updateReaderPageUI(nextPage);
+  const target = document.querySelector(`.reader-page-item[data-page="${nextPage}"]`);
+  if (target && !isReaderSingleMode()) target.scrollIntoView({ block: "start", behavior: opts.behavior || "smooth" });
+  if (opts.save !== false) {
+    const payload = state.currentReaderPayload;
+    if (payload) {
+      const tb = state.cache.titles.get(`${payload.title_id}:${state.chapterLang}`);
+      const savedCover = tb?.cover_url || getProgress(payload.title_id)?.cover_url || "";
+      persistProgress({ title_id: payload.title_id, title_name: payload.title, chapter_id: payload.chapter_id, chapter_number: payload.chapter_number, page_index: nextPage, total_pages: total, cover_url: savedCover }).catch(() => {});
+    }
+  }
+}
+
+function applyReaderMode() {
+  const shell = $$("readerShell");
+  if (!shell) return;
+  shell.classList.toggle("reader-mode-single", isReaderSingleMode());
+  shell.classList.toggle("reader-mode-webtoon", !isReaderSingleMode());
+  if ($$("readerModeCurrent")) $$("readerModeCurrent").textContent = readerModeLabel();
+}
+
+function toggleReaderFit() {
+  saveReaderFit(state.readerFit === "width" ? "height" : "width");
+  const shell = $$("readerShell");
+  if (shell) {
+    shell.classList.toggle("reader-fit-width", state.readerFit === "width");
+    shell.classList.toggle("reader-fit-height", state.readerFit === "height");
+  }
+  if ($$("readerFitBtn")) $$("readerFitBtn").classList.toggle("active", state.readerFit === "height");
+  if ($$("readerFitCurrent")) $$("readerFitCurrent").textContent = state.readerFit === "height" ? "Altura da tela" : "Largura da tela";
+  setReaderControls(true);
+}
+
+function openReaderSettings() {
+  $$("readerSheetBackdrop").classList.add("open");
+  $$("readerSettingsSheet").classList.add("open");
+}
+function closeReaderSettings() {
+  $$("readerSheetBackdrop").classList.remove("open");
+  $$("readerSettingsSheet").classList.remove("open");
+}
+function openReaderModeDialog() {
+  $$("readerModeDialog").classList.add("open");
+}
+function closeReaderModeDialog() {
+  $$("readerModeDialog").classList.remove("open");
+}
+
+function attachReaderControls(payload, pages) {
+  state.currentReaderPayload = payload;
+  const total = Math.max(1, pages.length);
+  const goBy = (delta) => {
+    const direction = state.readerMode === "single-rtl" ? -delta : delta;
+    jumpReaderPage(state.readerCurrentPage + direction);
+  };
+
+  $$("readerTapCenter").onclick = () => setReaderControls(!state.readerControlsVisible);
+  $$("readerTapLeft").onclick = () => isReaderSingleMode() ? goBy(-1) : setReaderControls(true);
+  $$("readerTapRight").onclick = () => isReaderSingleMode() ? goBy(1) : setReaderControls(true);
+  $$("readerPageRange").oninput = (event) => jumpReaderPage(event.target.value);
+  $$("readerBookmarkBtn").onclick = () => { jumpReaderPage(state.readerCurrentPage); toast(`Pagina ${state.readerCurrentPage} salva.`); };
+  $$("readerModeBtn").onclick = openReaderModeDialog;
+  $$("readerSettingsBtn").onclick = openReaderSettings;
+  $$("readerOpenSettings").onclick = openReaderSettings;
+  $$("readerSheetMode").onclick = () => { closeReaderSettings(); openReaderModeDialog(); };
+  $$("readerSheetFit").onclick = toggleReaderFit;
+  $$("readerFitBtn").onclick = toggleReaderFit;
+  $$("readerSheetBackdrop").onclick = closeReaderSettings;
+  $$("readerModeCancel").onclick = closeReaderModeDialog;
+  $$("readerModeDialog").addEventListener("click", (event) => {
+    if (event.target.id === "readerModeDialog") closeReaderModeDialog();
+  });
+  document.querySelectorAll("[data-reader-mode]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      saveReaderMode(btn.dataset.readerMode);
+      closeReaderModeDialog();
+      applyReaderMode();
+      jumpReaderPage(Math.min(state.readerCurrentPage, total), { behavior: "auto", save: false });
+      setReaderControls(true);
+    });
+  });
+}
+
+function renderChapter(payload, options = {}) {
+  state.currentChapterId = payload.chapter_id;
+  state.currentTitleId = payload.title_id;
+
+  const pages = Array.isArray(payload.images) ? payload.images : [];
+  const prev = payload.previous_chapter?.chapter_id || "";
+  const next = payload.next_chapter?.chapter_id || "";
+  const savedPage = Number(getProgress(payload.title_id)?.page_index || 1);
+  state.readerCurrentPage = Math.max(1, Math.min(savedPage, Math.max(1, pages.length)));
+
+  $$("readerWrapper").innerHTML = `
+    <div class="reader-shell reader-mode-${isReaderSingleMode() ? "single" : "webtoon"} reader-fit-${esc(state.readerFit)}" id="readerShell">
+      <div class="reader-pages" id="readerPages">
+        ${pages.map((img, i) => `
+          <article class="reader-page-item ${isReaderSingleMode() && i + 1 === state.readerCurrentPage ? "active" : ""}" data-page="${i + 1}">
+            <img src="${esc(img)}" alt="Pagina ${i + 1}" loading="${i < 3 ? "eager" : "lazy"}" decoding="${i < 3 ? "sync" : "async"}" data-index="${i + 1}" />
+          </article>`).join("")}
+      </div>
+      <div class="reader-tap-zone" id="readerTapZone">
+        <button class="reader-hit left" id="readerTapLeft" aria-label="Pagina anterior"></button>
+        <button class="reader-hit center" id="readerTapCenter" aria-label="Mostrar controles"></button>
+        <button class="reader-hit right" id="readerTapRight" aria-label="Proxima pagina"></button>
+      </div>
+      <div class="reader-ui reader-top-ui">
+        <div class="reader-top-inner">
+          <button class="reader-round-btn" id="readerBackToTitle" title="Capitulos">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div class="reader-title-box">
+            <div class="reader-title-text">${esc(payload.title || "Manga")}</div>
+            <div class="reader-sub-text">Capitulo ${esc(payload.chapter_number || "?")} - ${pages.length} paginas</div>
+          </div>
+          <button class="reader-round-btn" id="readerOpenSettings" title="Configuracoes">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="reader-ui reader-bottom-ui">
+        <div class="reader-page-nav">
+          <button class="reader-round-btn" id="readerPrevChapter" ${prev ? "" : "disabled"} title="Capitulo anterior">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 6h2v12H7V6Zm3.5 6 7.5 6V6l-7.5 6Z"/></svg>
+          </button>
+          <div class="reader-slider-wrap">
+            <div class="reader-page-num" id="readerPageNow">1</div>
+            <input class="reader-range" id="readerPageRange" type="range" min="1" max="${Math.max(1, pages.length)}" value="${state.readerCurrentPage}" />
+            <div class="reader-page-num" id="readerPageTotal">${pages.length}</div>
+          </div>
+          <button class="reader-round-btn" id="readerNextChapter" ${next ? "" : "disabled"} title="Proximo capitulo">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M15 6h2v12h-2V6Zm-9 0v12l7.5-6L6 6Z"/></svg>
+          </button>
+        </div>
+        <div class="reader-tool-dock">
+          <button class="reader-tool-btn" id="readerBookmarkBtn" title="Salvar pagina"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
+          <button class="reader-tool-btn" id="readerModeBtn" title="Modo de leitura"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></button>
+          <button class="reader-tool-btn ${state.readerFit === "height" ? "active" : ""}" id="readerFitBtn" title="Ajuste da pagina"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h16M12 4v16"/><path d="m8 8-4 4 4 4M16 8l4 4-4 4"/></svg></button>
+          <button class="reader-tool-btn" id="readerSettingsBtn" title="Configuracoes"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
+        </div>
+      </div>
+      <div class="reader-sheet-backdrop" id="readerSheetBackdrop"></div>
+      <div class="reader-sheet" id="readerSettingsSheet">
+        <div class="reader-sheet-inner">
+          <div class="reader-sheet-title">Configuracoes</div>
+          <button class="reader-setting-row" id="readerSheetMode">
+            <span class="reader-setting-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></span>
+            <span><span class="reader-setting-label">Modo de leitura</span><span class="reader-setting-sub" id="readerModeCurrent">${esc(readerModeLabel())}</span></span>
+            <span></span>
+          </button>
+          <button class="reader-setting-row" id="readerSheetFit">
+            <span class="reader-setting-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h16M12 4v16"/><path d="m8 8-4 4 4 4M16 8l4 4-4 4"/></svg></span>
+            <span><span class="reader-setting-label">Ajuste da pagina</span><span class="reader-setting-sub" id="readerFitCurrent">${state.readerFit === "height" ? "Altura da tela" : "Largura da tela"}</span></span>
+            <span></span>
+          </button>
+          <button class="reader-setting-row" id="readerSheetAuto">
+            <span class="reader-setting-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span>
+            <span><span class="reader-setting-label">Deslocamento automatico</span><span class="reader-setting-sub">Desativado</span></span>
+            <span class="reader-switch"></span>
+          </button>
+        </div>
+      </div>
+      <div class="reader-mode-dialog" id="readerModeDialog">
+        <div class="reader-mode-card">
+          <div class="reader-mode-title">Modo de leitura</div>
+          ${readerModeOptionsHtml()}
+          <button class="reader-mode-cancel" id="readerModeCancel">Cancelar</button>
+        </div>
+      </div>
+    </div>`;
+
+  const backFn = () => openTitle(payload.title_id, false, { route: "chapters" });
+  $$("readerBackToTitle").onclick = backFn;
+  if ($$("readerPrevChapter")) $$("readerPrevChapter").onclick = () => prev && openChapter(prev);
+  if ($$("readerNextChapter")) $$("readerNextChapter").onclick = () => next && openChapter(next);
+
+  setPage("readerPage");
+  syncUrl({ route: "reader", titleId: payload.title_id, chapterId: payload.chapter_id }, options.replaceHistory ?? false);
+  attachReaderControls(payload, pages);
+  attachReaderObserver(payload);
+  jumpReaderPage(state.readerCurrentPage, { behavior: "auto", save: false });
+  setReaderControls(true);
+}
+
+function attachReaderObserver(payload) {
+  state.chapterObserver?.disconnect();
+  const images = [...document.querySelectorAll(".reader-page-item img")];
+  if (!images.length) return;
+  let lastSaved = -1;
+  state.chapterObserver = new IntersectionObserver((entries) => {
+    const visible = entries.filter(e => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (!visible) return;
+    const index = Number(visible.target.dataset.index || "0");
+    if (index === lastSaved) return;
+    lastSaved = index;
+    if (!isReaderSingleMode()) updateReaderPageUI(index);
+    const tb = state.cache.titles.get(`${payload.title_id}:${state.chapterLang}`);
+    const savedCover = tb?.cover_url || getProgress(payload.title_id)?.cover_url || "";
+    persistProgress({ title_id: payload.title_id, title_name: payload.title, chapter_id: payload.chapter_id, chapter_number: payload.chapter_number, page_index: index, total_pages: images.length, cover_url: savedCover }).catch(() => {});
+  }, { threshold: [0.3, 0.6, 0.9] });
+  images.forEach(img => state.chapterObserver.observe(img));
+}
+
 async function persistProgress(payload) {
   if (!payload?.title_id) return;
   setProgress(payload);
@@ -2168,7 +2495,7 @@ async function openChapter(chapterId, force = false, options = {}) {
       renderChapter(payload, { replaceHistory: Boolean(options.replaceHistory) });
       const titleBundle = state.cache.titles.get(`${payload.title_id}:${state.chapterLang}`);
       const coverUrl = titleBundle?.cover_url || "";
-      await persistProgress({ title_id: payload.title_id, title_name: payload.title, chapter_id: payload.chapter_id, chapter_number: payload.chapter_number, page_index: 1, total_pages: payload.images?.length || 0, cover_url: coverUrl });
+      await persistProgress({ title_id: payload.title_id, title_name: payload.title, chapter_id: payload.chapter_id, chapter_number: payload.chapter_number, page_index: state.readerCurrentPage || 1, total_pages: payload.images?.length || 0, cover_url: coverUrl });
       [payload?.next_chapter?.chapter_id, payload?.previous_chapter?.chapter_id].forEach(async (id) => {
         const chapterKey = `${id}:${state.chapterLang}`;
         if (!id || state.cache.chapters.has(chapterKey)) return;
