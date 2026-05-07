@@ -277,8 +277,11 @@
     .page.hidden { display: none !important; }
     .page.reader-page { padding-left: 0; padding-right: 0; max-width: 100%; }
 
-    .page-enter { animation: pageIn .22s var(--ease) both; }
-    @keyframes pageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .page-enter { animation: pageIn .34s var(--ease) both; }
+    @keyframes pageIn {
+      from { opacity: 0; transform: translate3d(0, 16px, 0) scale(.985); filter: blur(4px); }
+      to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+    }
 
     /* ── HERO ── */
     .hero-banner {
@@ -582,18 +585,18 @@
     .profile-row-value { font-size: 14px; font-weight: 700; color: var(--text); }
 
     /* ── DETAIL PAGE ── */
-    .detail-panel { background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--shadow-lg); }
-    .detail-hero { position: relative; overflow: hidden; }
-    .detail-bg { position: absolute; inset: 0; background-size: cover; background-position: center top; transform: scale(1.02); }
+    .detail-panel { background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; box-shadow: var(--shadow-lg); }
+    .detail-hero { position: relative; overflow: hidden; border-radius: 24px; }
+    .detail-bg { position: absolute; inset: -16px; background-size: cover; background-position: center; transform: scale(1.06); filter: blur(12px); opacity: .62; }
     .detail-grad-overlay {
       position: absolute; inset: 0;
-      background: linear-gradient(0deg, rgba(6,8,16,.99) 0%, rgba(6,8,16,.94) 25%, rgba(6,8,16,.6) 60%, rgba(6,8,16,.15) 100%),
-                  linear-gradient(90deg, rgba(6,8,16,.97) 0%, rgba(6,8,16,.8) 30%, rgba(6,8,16,.25) 70%, transparent 100%);
+      background: linear-gradient(0deg, rgba(0,0,0,.96) 0%, rgba(0,0,0,.82) 46%, rgba(0,0,0,.48) 100%),
+                  linear-gradient(90deg, rgba(0,0,0,.86) 0%, rgba(0,0,0,.64) 46%, rgba(0,0,0,.34) 100%);
     }
-    .detail-inner { position: relative; z-index: 2; display: flex; gap: 24px; align-items: flex-end; padding: 24px; }
-    .detail-cover { width: 180px; flex-shrink: 0; aspect-ratio: 2/3; border-radius: 16px; overflow: hidden; background: var(--bg4); border: 1px solid var(--line2); box-shadow: var(--shadow-lg); align-self: flex-end; }
+    .detail-inner { position: relative; z-index: 2; display: grid; grid-template-columns: 190px minmax(0,1fr); gap: 28px; align-items: center; padding: 30px; min-height: 420px; }
+    .detail-cover { width: 100%; flex-shrink: 0; aspect-ratio: 2/3; border-radius: 18px; overflow: hidden; background: var(--bg4); border: 1px solid rgba(255,255,255,.22); box-shadow: 0 18px 55px rgba(0,0,0,.68), 0 0 32px rgba(255,65,46,.10); align-self: center; justify-self: center; }
     .detail-cover img { width: 100%; height: 100%; object-fit: cover; }
-    .detail-info { flex: 1; min-width: 0; padding-top: 90px; }
+    .detail-info { flex: 1; min-width: 0; padding-top: 0; }
     .detail-title { font-family: var(--font-d); font-size: clamp(22px, 5vw, 40px); font-weight: 800; letter-spacing: -.03em; line-height: 1.0; margin-bottom: 8px; text-wrap: balance; }
     .detail-alt { color: var(--text3); font-size: 12.5px; line-height: 1.5; margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .detail-meta-row, .detail-genres { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -603,11 +606,61 @@
     .synopsis-extra-tags { display: none; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
     .synopsis-wrap.expanded .synopsis-extra-tags { display: flex; }
     .synopsis-toggle { margin-top: 6px; color: var(--accent3); font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; background: none; border: none; padding: 0; }
-    .detail-actions { display: flex; gap: 9px; flex-wrap: nowrap; margin-top: 16px; overflow-x: auto; scrollbar-width: none; }
+    .detail-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(138px, 1fr)); gap: 10px; margin-top: 22px; overflow: visible; align-items: stretch; }
     .detail-actions::-webkit-scrollbar { display: none; }
-    .detail-actions .btn, .detail-actions .fav-heart-btn { flex: 0 0 auto; white-space: nowrap; }
-    .detail-actions .detail-extra-link { opacity: .72; }
+    .detail-actions .btn, .detail-actions .fav-heart-btn { min-width: 0; width: 100%; justify-content: center; white-space: nowrap; }
+    .detail-actions .detail-extra-link { opacity: .72; grid-column: 1 / -1; max-width: 190px; }
     .detail-body { padding: 20px; }
+
+    .search-page-shell { display: grid; gap: 16px; }
+    .search-page-bar {
+      display: flex; align-items: center; gap: 10px;
+      height: 50px; padding: 0 15px;
+      border-radius: 16px;
+      background: rgba(255,255,255,.045);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
+    }
+    .search-page-bar:focus-within { border-color: rgba(255,65,46,.5); box-shadow: 0 0 0 3px rgba(255,65,46,.14); }
+    .search-page-bar input { flex: 1; min-width: 0; font-size: 15px; color: var(--text); }
+    .search-page-bar input::placeholder { color: var(--text3); }
+
+    .news-feed { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .news-card {
+      overflow: hidden; border-radius: 22px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-md);
+      cursor: pointer;
+      transition: transform .22s var(--ease), border-color .22s, background .22s;
+    }
+    .news-card:active { transform: scale(.985); }
+    .news-card:hover { transform: translateY(-3px); border-color: rgba(255,65,46,.28); background: rgba(255,255,255,.07); }
+    .news-cover { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: var(--bg4); }
+    .news-cover-fallback {
+      display: grid; place-items: center;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255,65,46,.32), transparent 30%),
+        linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,65,46,.12) 45%, rgba(0,0,0,.18));
+    }
+    .news-cover-fallback::after {
+      content: "Notícias";
+      font-family: var(--font-d);
+      font-size: 28px;
+      font-weight: 900;
+      color: rgba(255,255,255,.86);
+      letter-spacing: -.03em;
+    }
+    .news-card-body { padding: 16px; }
+    .news-date { color: var(--accent3); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+    .news-title { font-family: var(--font-d); font-size: 18px; line-height: 1.16; font-weight: 900; letter-spacing: -.035em; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .news-summary { color: var(--text2); font-size: 13px; line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .news-detail { border-radius: 24px; overflow: hidden; background: rgba(255,255,255,.045); border: 1px solid var(--line); box-shadow: var(--shadow-lg); }
+    .news-detail-hero { width: 100%; max-height: 360px; object-fit: cover; background: var(--bg4); }
+    .news-detail-body { padding: 20px; }
+    .news-detail-title { font-family: var(--font-d); font-size: clamp(25px, 7vw, 44px); font-weight: 900; line-height: 1.02; letter-spacing: -.045em; margin-bottom: 12px; }
+    .news-detail-text { color: var(--text2); font-size: 15px; line-height: 1.72; white-space: pre-wrap; }
+    .news-tags { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0; }
 
     .fav-heart-btn {
       height: 40px; padding: 0 16px; border-radius: var(--r-sm);
@@ -745,13 +798,10 @@
       border-top-color: var(--line);
       color: var(--text);
     }
-    .chapter-row.current {
-      background: rgba(255,65,46,.08);
-      border-radius: 12px;
-      padding-left: 10px;
-      padding-right: 6px;
-    }
-    .chapter-row.read { color: var(--text3); }
+    .chapter-row.current { background: rgba(255,65,46,.08); }
+    .chapter-row.read { color: #79e2aa; }
+    .chapter-row.read .chapter-meta { color: #79e2aa; opacity: .72; }
+    .chapter-row.read .chapter-n::before { content: "✓ "; color: #79e2aa; }
     .chapter-panel.native-list .chapter-n {
       font-size: 14px;
       font-weight: 800;
@@ -770,6 +820,8 @@
       border-radius: var(--r-sm);
     }
     .chapter-download-btn svg { width: 21px; height: 21px; }
+    .chapter-icon-btn.notify-on { color: #79e2aa; border-color: rgba(121,226,170,.32); background: rgba(121,226,170,.08); }
+    .chapter-icon-btn.notify-off { color: rgba(245,247,255,.48); }
     .chapter-filter-sheet {
       inset: auto 10px calc(var(--navbar-h) + 18px + var(--safe-b));
       background: rgba(12,14,22,.98);
@@ -1030,9 +1082,15 @@
 
     /* ── RESPONSIVE ── */
     @media (max-width: 600px) {
-      .detail-inner { flex-direction: column; align-items: center; gap: 16px; padding: 20px 16px; text-align: left; }
-      .detail-cover { width: 120px; }
+      .detail-inner { grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 14px; padding: 18px; min-height: 315px; text-align: left; }
+      .detail-cover { width: 100%; border-radius: 16px; }
       .detail-info { padding-top: 0; width: 100%; }
+      .detail-title { font-size: clamp(23px, 7vw, 34px); }
+      .detail-alt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .detail-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .detail-actions .detail-extra-link { grid-column: 1 / -1; max-width: none; }
+      .detail-actions .btn, .detail-actions .fav-heart-btn { padding-left: 10px; padding-right: 10px; font-size: 12px; }
+      .news-feed { grid-template-columns: 1fr; }
       .card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
       .chapter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
       .chapter-controls { flex-wrap: wrap; align-items: stretch; }
@@ -1043,8 +1101,8 @@
       .chapter-panel { padding: 13px; }
     }
     @media (min-width: 601px) {
-      .detail-cover { width: 200px; }
-      .detail-info { padding-top: 120px; }
+      .detail-cover { width: 100%; }
+      .detail-info { padding-top: 0; }
       .card-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
     }
   </style>
@@ -1067,9 +1125,6 @@
         <input id="topbarSearchInput" placeholder="Buscar mangá..." autocomplete="off" />
         <button class="search-clear-btn" id="topbarSearchClear">✕</button>
       </div>
-      <button class="icon-btn" id="profileBtn" title="Perfil">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7"/></svg>
-      </button>
     </div>
   </header>
 
@@ -1127,43 +1182,6 @@
         </div>
       </div>
       <div class="cw-scroll" id="continueList"></div>
-    </section>
-
-    <section class="search-section">
-      <div class="search-bar-home">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input id="homeSearchInput" type="search" placeholder="Busque um mangá pelo nome..." autocomplete="off" />
-      </div>
-      <div class="chip-row">
-        <button class="chip" onclick="jumpTo('featuredSection')">Banners</button>
-        <button class="chip" onclick="openCatalogSection('manga')">Mangás</button>
-        <button class="chip" onclick="openCatalogSection('manhwa')">Manhwas</button>
-        <button class="chip" onclick="openCatalogSection('manhua')">Manhuas</button>
-        <button class="chip" onclick="jumpTo('recommendedSection')">Recomendados</button>
-        <button class="chip" onclick="jumpTo('topViewedSection')">Mais visualizados</button>
-        <button class="chip" onclick="jumpTo('latestUpdatesSection')">Atualizacoes PT-BR</button>
-        <button class="chip" onclick="jumpTo('recentReadSection')">Lidos recentemente</button>
-        <button class="chip" onclick="jumpTo('popularSeasonSection')">Temporada</button>
-      </div>
-    </section>
-
-    <section class="section hidden" id="searchResultsSection">
-      <div class="section-head">
-        <div class="section-label">
-          <div class="section-accent"></div>
-          <div>
-            <div class="section-title">Resultados</div>
-            <div class="section-count" id="searchMeta">Buscando...</div>
-          </div>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="clearSearch()">✕ Limpar</button>
-      </div>
-      <div id="searchGrid"></div>
-      <div class="pager hidden" id="searchPager">
-        <button class="btn btn-ghost btn-sm" id="searchPrevBtn">Anterior</button>
-        <span class="pager-label" id="searchPagerLabel">Página 1</span>
-        <button class="btn btn-ghost btn-sm" id="searchNextBtn">Próxima</button>
-      </div>
     </section>
 
     <section class="section" id="featuredSection">
@@ -1250,6 +1268,36 @@
     </div>
   </main>
 
+  <!-- SEARCH PAGE -->
+  <main id="searchPage" class="page hidden">
+    <div class="search-page-shell">
+      <div class="lib-page-header">
+        <div class="lib-page-title">Busca</div>
+        <div class="lib-page-sub" id="searchPageSub">Digite o nome da obra e continue escrevendo sem perder o foco</div>
+      </div>
+      <div class="search-page-bar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="searchPageInput" type="search" placeholder="Buscar mangá..." autocomplete="off" />
+        <button id="searchPageClear" class="search-clear-btn" type="button">✕</button>
+      </div>
+      <div id="searchPageGrid"></div>
+      <div class="pager hidden" id="searchPagePager">
+        <button class="btn btn-ghost btn-sm" id="searchPagePrevBtn">Anterior</button>
+        <span class="pager-label" id="searchPagePagerLabel">Página 1</span>
+        <button class="btn btn-ghost btn-sm" id="searchPageNextBtn">Próxima</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- NEWS PAGE -->
+  <main id="newsPage" class="page hidden">
+    <div class="lib-page-header">
+      <div class="lib-page-title">Notícias</div>
+      <div class="lib-page-sub" id="newsPageSub">Novidades de mangás atualizadas automaticamente</div>
+    </div>
+    <div id="newsFeed" class="news-feed"></div>
+  </main>
+
   <!-- READER PAGE -->
   <main id="readerPage" class="page reader-page hidden">
     <div class="reader-wrapper" id="readerWrapper"></div>
@@ -1290,32 +1338,23 @@
       </div>
       <span class="nav-label">Início</span>
     </div>
-    <div class="nav-item" id="nav-manga" data-tab="manga">
+    <div class="nav-item" id="nav-search" data-tab="search">
       <div class="nav-icon">
         <svg viewBox="0 0 24 24">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          <circle cx="11" cy="11" r="7"/>
+          <path d="m20 20-3.5-3.5"/>
         </svg>
       </div>
-      <span class="nav-label">Mangás</span>
+      <span class="nav-label">Busca</span>
     </div>
-    <div class="nav-item" id="nav-manhwa" data-tab="manhwa">
+    <div class="nav-item" id="nav-news" data-tab="news">
       <div class="nav-icon">
         <svg viewBox="0 0 24 24">
-          <rect x="4" y="3" width="16" height="18" rx="2"/>
-          <path d="M8 7h8M8 11h8M8 15h5"/>
+          <rect x="4" y="5" width="16" height="14" rx="2"/>
+          <path d="M8 9h8M8 13h5M16 17h.01"/>
         </svg>
       </div>
-      <span class="nav-label">Manhwa</span>
-    </div>
-    <div class="nav-item" id="nav-manhua" data-tab="manhua">
-      <div class="nav-icon">
-        <svg viewBox="0 0 24 24">
-          <path d="M4 4h16v16H4z"/>
-          <path d="M8 4v16M16 4v16M4 10h16M4 16h16"/>
-        </svg>
-      </div>
-      <span class="nav-label">Manhua</span>
+      <span class="nav-label">Notícias</span>
     </div>
     <div class="nav-item" id="nav-lib" data-tab="lib">
       <div class="nav-icon">
@@ -1326,14 +1365,14 @@
       </div>
       <span class="nav-label">Biblioteca</span>
     </div>
-    <div class="nav-item" id="nav-history" data-tab="history">
+    <div class="nav-item" id="nav-profile" data-tab="profile">
       <div class="nav-icon">
         <svg viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M5 21a7 7 0 0 1 14 0"/>
         </svg>
       </div>
-      <span class="nav-label">Histórico</span>
+      <span class="nav-label">Perfil</span>
     </div>
   </nav>
 
@@ -1453,6 +1492,11 @@ const state = {
   favorites: loadFavorites(),
   seenUpdates: loadSeenUpdates(),
   downloadedChapters: loadDownloadedChapters(),
+  notifications: loadNotifications(),
+  newsItems: [],
+  newsFetchedAt: 0,
+  newsRefreshTimer: null,
+  authUnavailable: false,
   progressServerState: {},
   cache: { home: null, titles: new Map(), chapters: new Map(), search: new Map() },
   inflight: { title: new Map(), chapter: new Map(), search: new Map() },
@@ -1495,6 +1539,36 @@ function getFavList() {
   return Object.values(state.favorites).sort((a, b) => (b.added_at || 0) - (a.added_at || 0));
 }
 
+function loadNotifications() {
+  try { return JSON.parse(localStorage.getItem("mb_notifications_v1") || "{}"); } catch (_) { return {}; }
+}
+function saveNotifications() {
+  try { localStorage.setItem("mb_notifications_v1", JSON.stringify(state.notifications || {})); } catch (_) {}
+}
+function notificationKey(titleId, lang = state.chapterLang) {
+  return `${titleId || ""}:${normalizeLang(lang || state.chapterLang)}`;
+}
+function isNotifyEnabled(titleId, lang = state.chapterLang) {
+  return Boolean(state.notifications?.[notificationKey(titleId, lang)]?.enabled);
+}
+function setLocalNotification(titleId, enabled, meta = {}, lang = state.chapterLang) {
+  const key = notificationKey(titleId, lang);
+  if (!titleId) return;
+  if (enabled) {
+    state.notifications[key] = {
+      ...(state.notifications[key] || {}),
+      ...meta,
+      title_id: titleId,
+      language: normalizeLang(lang || state.chapterLang),
+      enabled: true,
+      updated_at: Date.now(),
+    };
+  } else if (state.notifications[key]) {
+    state.notifications[key] = { ...state.notifications[key], enabled: false, updated_at: Date.now() };
+  }
+  saveNotifications();
+}
+
 function loadLaunchUserId() {
   const fromTelegram = String(tg?.initDataUnsafe?.user?.id || "").trim();
   if (fromTelegram) return fromTelegram;
@@ -1528,7 +1602,7 @@ function saveChapterLanguage(lang) {
   try { localStorage.setItem("mb_chapter_lang_v1", state.chapterLang); } catch (_) {}
 }
 function hasTelegramAuth() {
-  return Boolean(tg?.initData);
+  return Boolean(tg?.initData) && !state.authUnavailable;
 }
 function authUserQuery() {
   return hasTelegramAuth() && state.userId ? `&user_id=${encodeURIComponent(state.userId)}` : "";
@@ -1625,6 +1699,7 @@ async function api(path, options = {}) {
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
     try { const d = await response.json(); message = d?.detail || d?.message || message; } catch (_) {}
+    if (response.status === 401) state.authUnavailable = true;
     throw new Error(message);
   }
   return response.json();
@@ -1768,7 +1843,7 @@ function syncUrl({ route = "", titleId = "", chapterId = "" } = {}, replace = fa
 // ══════════════════════════════════════════
 //  PAGE MANAGEMENT
 // ══════════════════════════════════════════
-const ALL_PAGES = ["homePage","detailPage","catalogPage","readerPage","historyPage","profilePage","libPage","updatesPage"];
+const ALL_PAGES = ["homePage","detailPage","catalogPage","searchPage","newsPage","readerPage","historyPage","profilePage","libPage","updatesPage"];
 
 function setPage(pageName) {
   state.currentPage = pageName;
@@ -1784,7 +1859,7 @@ function setPage(pageName) {
   });
 
   // back button: show on detail/reader; hide on main tabs
-  const mainTabs = ["homePage","catalogPage","historyPage","profilePage","libPage","updatesPage"];
+  const mainTabs = ["homePage","catalogPage","searchPage","newsPage","historyPage","profilePage","libPage","updatesPage"];
   $$("backBtn").classList.toggle("hidden", mainTabs.includes(pageName));
 
   // hide navbar in reader
@@ -1797,6 +1872,8 @@ function setPage(pageName) {
   const tabMap = {
     homePage: "home",
     catalogPage: state.currentCatalogSection || "",
+    searchPage: "search",
+    newsPage: "news",
     historyPage: "history",
     profilePage: "profile",
     libPage: "lib",
@@ -1849,7 +1926,11 @@ async function doSearch(query, page = 1) {
   if (state.inflight.search.has(key)) return state.inflight.search.get(key);
 
   const task = (async () => {
-    showLoading("Buscando", `Procurando resultados para "${q}".`);
+    if ($$("searchPageSub")) $$("searchPageSub").textContent = `Buscando "${q}"...`;
+    if ($$("searchPageGrid") && state.currentPage !== "searchPage") $$("searchPageGrid").innerHTML = skeletonGrid(8);
+    if ($$("searchPageInput") && $$("searchPageInput").value.trim() !== q) $$("searchPageInput").value = q;
+    if ($$("topbarSearchInput") && $$("topbarSearchInput").value.trim() !== q) $$("topbarSearchInput").value = q;
+    setPage("searchPage");
     try {
       let data = state.cache.search.get(key);
       if (!data) {
@@ -1857,27 +1938,24 @@ async function doSearch(query, page = 1) {
         state.cache.search.set(key, data);
       }
       const results = data.results || [];
-      const section = $$("searchResultsSection");
-      section.classList.remove("hidden");
       const total = Number(data.total || results.length || 0);
-      $$("searchMeta").textContent = `${total || results.length} resultado(s) para "${q}"`;
-      renderGrid("searchGrid", results, { emptyText: `Nenhum mangá encontrado para "${q}".` });
+      $$("searchPageSub").textContent = `${total || results.length} resultado(s) para "${q}"`;
+      renderGrid("searchPageGrid", results, { emptyText: `Nenhum mangá encontrado para "${q}".` });
       const totalPages = Number(data.total_pages || 1);
-      $$("searchPager").classList.toggle("hidden", totalPages <= 1 && !data.has_next && !data.has_prev);
-      $$("searchPagerLabel").textContent = `Página ${Number(data.page || safePage)}${totalPages ? ` de ${totalPages}` : ""}`;
-      $$("searchPrevBtn").disabled = !data.has_prev;
-      $$("searchNextBtn").disabled = !data.has_next;
-      $$("searchPrevBtn").onclick = () => doSearch(q, safePage - 1);
-      $$("searchNextBtn").onclick = () => doSearch(q, safePage + 1);
-      section.scrollIntoView({ behavior: "smooth", block: "start" });
+      $$("searchPagePager").classList.toggle("hidden", totalPages <= 1 && !data.has_next && !data.has_prev);
+      $$("searchPagePagerLabel").textContent = `Página ${Number(data.page || safePage)}${totalPages ? ` de ${totalPages}` : ""}`;
+      $$("searchPagePrevBtn").disabled = !data.has_prev;
+      $$("searchPageNextBtn").disabled = !data.has_next;
+      $$("searchPagePrevBtn").onclick = () => doSearch(q, safePage - 1);
+      $$("searchPageNextBtn").onclick = () => doSearch(q, safePage + 1);
+      syncUrl({ route: "search" }, false);
     } catch (err) {
       console.error("SEARCH:", err);
-      $$("searchResultsSection").classList.remove("hidden");
-      $$("searchMeta").textContent = "Erro na busca.";
-      $$("searchGrid").innerHTML = emptyState("A busca falhou. Tente novamente.", "🔍");
+      setPage("searchPage");
+      $$("searchPageSub").textContent = "Erro na busca.";
+      $$("searchPageGrid").innerHTML = emptyState("A busca falhou. Tente novamente.", "🔍");
       toast("Falha na busca.");
     } finally {
-      hideLoading();
       state.inflight.search.delete(key);
     }
   })();
@@ -1886,12 +1964,14 @@ async function doSearch(query, page = 1) {
 }
 
 function clearSearch() {
-  $$("searchResultsSection").classList.add("hidden");
-  $$("searchGrid").innerHTML = "";
-  $$("searchPager")?.classList.add("hidden");
-  $$("homeSearchInput").value = "";
-  $$("topbarSearchInput").value = "";
-  $$("topbarSearchClear").classList.remove("visible");
+  if ($$("searchPageSub")) $$("searchPageSub").textContent = "Digite o nome da obra e continue escrevendo sem perder o foco";
+  if ($$("searchPageGrid")) $$("searchPageGrid").innerHTML = "";
+  $$("searchPagePager")?.classList.add("hidden");
+  if ($$("searchPageInput")) $$("searchPageInput").value = "";
+  if ($$("homeSearchInput")) $$("homeSearchInput").value = "";
+  if ($$("topbarSearchInput")) $$("topbarSearchInput").value = "";
+  $$("topbarSearchClear")?.classList.remove("visible");
+  $$("searchPageClear")?.classList.remove("visible");
 }
 window.clearSearch = clearSearch;
 
@@ -1916,11 +1996,54 @@ function updateFavBtn(titleId) {
 function handleFavClick(titleId, meta = {}, btnEl = null) {
   const added = toggleFav(titleId, meta);
   syncFavoriteWithServer(titleId, added, meta).catch(() => {});
+  if (added) {
+    setLocalNotification(titleId, true, meta, meta.language || state.chapterLang);
+    if (state.userId && hasTelegramAuth()) {
+      api("/api/notifications/title", {
+        method: "POST",
+        timeoutMs: 15000,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: state.userId,
+          init_data: tg?.initData || "",
+          title_id: titleId,
+          enabled: true,
+          language: normalizeLang(meta.language || state.chapterLang),
+          title: meta.title || meta.display_title || "",
+          latest_chapter: meta.latest_chapter || "",
+          latest_chapter_id: meta.latest_chapter_id || "",
+          chapter_count: Number(meta.chapter_count || 0),
+          cover_url: meta.cover_url || "",
+        }),
+      }).catch(() => {});
+    }
+  } else {
+    setLocalNotification(titleId, false, meta, meta.language || state.chapterLang);
+    if (state.userId && hasTelegramAuth()) {
+      api("/api/notifications/title", {
+        method: "POST",
+        timeoutMs: 15000,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: state.userId,
+          init_data: tg?.initData || "",
+          title_id: titleId,
+          enabled: false,
+          language: normalizeLang(meta.language || state.chapterLang),
+          title: meta.title || meta.display_title || "",
+          latest_chapter: meta.latest_chapter || "",
+          latest_chapter_id: meta.latest_chapter_id || "",
+          chapter_count: Number(meta.chapter_count || 0),
+          cover_url: meta.cover_url || "",
+        }),
+      }).catch(() => {});
+    }
+  }
   if (btnEl) {
     btnEl.classList.add("fav-popping");
     setTimeout(() => btnEl.classList.remove("fav-popping"), 400);
   }
-  toast(added ? "⭐ Adicionado aos favoritos!" : "Removido dos favoritos.");
+  toast(added ? "Adicionado aos favoritos e avisos ativados." : "Removido dos favoritos.");
 }
 
 const STATUS_PT = {
@@ -2538,6 +2661,85 @@ async function openCatalogSection(section = "manga", page = 1) {
 window.openCatalogSection = openCatalogSection;
 
 // ══════════════════════════════════════════
+//  NEWS
+// ══════════════════════════════════════════
+function newsDateLabel(value) {
+  if (!value) return "";
+  const ts = normalizeRemoteTime(value);
+  return Number.isFinite(ts) ? timeAgo(ts) : String(value);
+}
+
+function renderNewsFeed(items = []) {
+  const feed = $$("newsFeed");
+  if (!feed) return;
+  if (!items.length) {
+    feed.innerHTML = emptyState("Não foi possível carregar notícias agora.", "📰");
+    return;
+  }
+  feed.innerHTML = "";
+  items.forEach((item, index) => {
+    const card = document.createElement("article");
+    card.className = "news-card";
+    card.innerHTML = `
+      ${item.image ? `<img class="news-cover" src="${esc(item.image)}" alt="${esc(item.title || "Notícia")}" loading="lazy" decoding="async" />` : `<div class="news-cover news-cover-fallback"></div>`}
+      <div class="news-card-body">
+        <div class="news-date">${esc(newsDateLabel(item.published_at))}</div>
+        <div class="news-title">${esc(item.title || "Notícia")}</div>
+        <div class="news-summary">${esc(item.summary || "")}</div>
+      </div>`;
+    card.addEventListener("click", () => openNewsDetail(index));
+    feed.appendChild(card);
+  });
+}
+
+async function openNewsPage(force = false) {
+  setPage("newsPage");
+  syncUrl({ route: "news" }, false);
+  if (!state.newsRefreshTimer) {
+    state.newsRefreshTimer = setInterval(() => {
+      if (state.currentPage === "newsPage") openNewsPage(true);
+    }, 5 * 60 * 1000);
+  }
+  if (!force && state.newsItems.length && Date.now() - state.newsFetchedAt < 5 * 60 * 1000) {
+    renderNewsFeed(state.newsItems);
+    return;
+  }
+  $$("newsFeed").innerHTML = skeletonGrid(6);
+  try {
+    const data = await api("/api/news/manga", { timeoutMs: 25000 });
+    state.newsItems = Array.isArray(data.items) ? data.items : [];
+    state.newsFetchedAt = Date.now();
+    $$("newsPageSub").textContent = state.newsItems.length ? `${state.newsItems.length} novidades recentes` : "Sem novidades no momento";
+    renderNewsFeed(state.newsItems);
+  } catch (err) {
+    console.error("NEWS:", err);
+    $$("newsFeed").innerHTML = emptyState("Não foi possível carregar as notícias. Tente novamente depois.", "📰");
+    toast("Falha ao carregar notícias.");
+  }
+}
+
+function openNewsDetail(index = 0) {
+  const item = state.newsItems[index];
+  if (!item) return;
+  setPage("newsPage");
+  const tags = Array.isArray(item.tags) ? item.tags.filter(Boolean).slice(0, 8) : [];
+  $$("newsFeed").innerHTML = `
+    <article class="news-detail">
+      ${item.image ? `<img class="news-detail-hero" src="${esc(item.image)}" alt="${esc(item.title || "Notícia")}" />` : ""}
+      <div class="news-detail-body">
+        <div class="news-date">${esc(newsDateLabel(item.published_at))}</div>
+        <h1 class="news-detail-title">${esc(item.title || "Notícia")}</h1>
+        ${tags.length ? `<div class="news-tags">${tags.map(tag => `<span class="tag-pill">${esc(tag)}</span>`).join("")}</div>` : ""}
+        <div class="news-detail-text">${esc(item.content || item.summary || "")}</div>
+        ${item.url ? `<button class="btn btn-ghost" id="newsFullBtn" style="margin-top:18px">Ler completa</button>` : ""}
+      </div>
+    </article>`;
+  $$("newsFullBtn")?.addEventListener("click", () => window.open(item.url, "_blank", "noopener,noreferrer"));
+  $$("newsPageSub").textContent = "Leitura adaptada ao WebApp";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ══════════════════════════════════════════
 //  DETAIL
 // ══════════════════════════════════════════
 function buildMetaPills(bundle, chapters = []) {
@@ -2572,6 +2774,8 @@ function iconSvg(name, size = 26) {
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
     download: '<path d="M12 3v12"/><path d="m6 11 6 6 6-6"/><path d="M5 21h14"/>',
     filter: '<path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/>',
+    bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
+    bellOff: '<path d="m2 2 20 20"/><path d="M8.6 4.7A6 6 0 0 1 18 8c0 7 3 7 3 9H11"/><path d="M6 8c0 7-3 7-3 9h11"/><path d="M10 21h4"/>',
     close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     check: '<path d="m5 12 4 4L19 6"/>',
   };
@@ -2641,6 +2845,46 @@ async function requestChapterDownload(chapter, button, format = "pdf") {
   }
 }
 
+async function toggleTitleNotification(titleId, lang = state.chapterLang, meta = {}) {
+  if (!titleId) return;
+  const nextEnabled = !isNotifyEnabled(titleId, lang);
+  setLocalNotification(titleId, nextEnabled, meta, lang);
+  const btn = $$("chapterNotifyBtn");
+  if (btn) {
+    btn.classList.toggle("notify-on", nextEnabled);
+    btn.classList.toggle("notify-off", !nextEnabled);
+    btn.classList.toggle("active", nextEnabled);
+    btn.innerHTML = iconSvg(nextEnabled ? "bell" : "bellOff", 29);
+  }
+  if (nextEnabled && !isFav(titleId)) {
+    state.favorites[titleId] = { title_id: titleId, added_at: Date.now(), ...meta };
+    saveFavorites();
+    updateFavBtn(titleId);
+  }
+  if (state.userId && hasTelegramAuth()) {
+    try {
+      await api("/api/notifications/title", {
+        method: "POST",
+        timeoutMs: 15000,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: state.userId,
+          init_data: tg?.initData || "",
+          title_id: titleId,
+          enabled: nextEnabled,
+          language: normalizeLang(lang || state.chapterLang),
+          title: meta.title || meta.display_title || "",
+          latest_chapter: meta.latest_chapter || "",
+          latest_chapter_id: meta.latest_chapter_id || "",
+          chapter_count: Number(meta.chapter_count || 0),
+          cover_url: meta.cover_url || "",
+        }),
+      });
+    } catch (_) {}
+  }
+  toast(nextEnabled ? "Avisos ativados para esta obra." : "Avisos desativados para esta obra.");
+}
+
 function renderDetail(bundle, opts = {}) {
   const rawChapters = Array.isArray(bundle?.chapters) ? bundle.chapters : [];
   const flatChapters = rawChapters.flatMap(entry =>
@@ -2667,9 +2911,12 @@ function renderDetail(bundle, opts = {}) {
     background_url: bg,
     latest_chapter: bundle?.latest_chapter?.chapter_number || chapters[0]?.chapter_number || "",
     latest_chapter_id: latestChapter,
+    chapter_count: chapters.length,
+    language: currentLanguage,
     status: bundle.status || bundle.anilist_status,
     anilist_score: bundle.anilist_score || bundle.rating || "",
   };
+  const notifyEnabled = isNotifyEnabled(bundle.title_id, currentLanguage);
 
   state.currentTitleBundle = bundle;
   state.currentTitleId = bundle.title_id || "";
@@ -2708,6 +2955,7 @@ function renderDetail(bundle, opts = {}) {
             <div class="chapter-total"><span id="chapterVisibleCount">${chapters.length}</span> Capítulos</div>
             <div class="chapter-toolbar">
               <button class="chapter-icon-btn" id="chapterSearchBtn" title="Buscar capítulo" aria-label="Buscar capítulo">${iconSvg("search", 30)}</button>
+              <button class="chapter-icon-btn ${notifyEnabled ? "notify-on active" : "notify-off"}" id="chapterNotifyBtn" title="Avisos de novos capítulos" aria-label="Avisos de novos capítulos">${iconSvg(notifyEnabled ? "bell" : "bellOff", 29)}</button>
               <button class="chapter-icon-btn" id="chapterBulkDownloadBtn" title="Baixar a obra" aria-label="Baixar a obra">${iconSvg("download", 31)}</button>
               <button class="chapter-icon-btn" id="chapterFilterBtn" title="Filtrar e ordenar" aria-label="Filtrar e ordenar">${iconSvg("filter", 31)}</button>
             </div>
@@ -2927,6 +3175,7 @@ function renderDetail(bundle, opts = {}) {
     if (open) setTimeout(() => $$("chapterFilterInput")?.focus(), 40);
   });
   $$("chapterFilterBtn")?.addEventListener("click", () => openFilterSheet("filter"));
+  $$("chapterNotifyBtn")?.addEventListener("click", () => toggleTitleNotification(bundle.title_id, currentLanguage, favMeta));
   $$("chapterFilterSummary")?.addEventListener("click", () => openFilterSheet("filter"));
   $$("chapterFilterClose")?.addEventListener("click", closeFilterSheet);
   $$("chapterDownloadClose")?.addEventListener("click", closeDownloadSheet);
@@ -2971,7 +3220,7 @@ function renderDetail(bundle, opts = {}) {
     if (arrow) arrow.textContent = expanded ? "▲" : "▼";
   };
 
-  if ($$("continueReadBtn")) $$("continueReadBtn").onclick = () => openChapter(lastRead);
+  if ($$("continueReadBtn")) $$("continueReadBtn").onclick = () => openChapter(lastRead, false, { resume: true });
   if ($$("latestChBtn")) $$("latestChBtn").onclick = () => openChapter(latestChapter);
 
   const detailFavBtn = $$("detailFavBtn");
@@ -3437,7 +3686,9 @@ function renderChapter(payload, options = {}) {
 
   const pages = Array.isArray(payload.images) ? payload.images : [];
   const { prev, next } = resolveReaderNav(payload);
-  const savedPage = Number(getProgress(payload.title_id)?.page_index || 1);
+  const progress = getProgress(payload.title_id);
+  const shouldResume = Boolean(options.resume && progress?.chapter_id === payload.chapter_id);
+  const savedPage = shouldResume ? Number(progress?.page_index || 1) : 1;
   state.readerCurrentPage = Math.max(1, Math.min(savedPage, Math.max(1, pages.length)));
   state.readerLoadedChapters = new Set([payload.chapter_id]);
   state.readerAutoLoading = false;
@@ -3616,7 +3867,7 @@ async function openChapter(chapterId, force = false, options = {}) {
           state.currentTitleBundle = bundle;
         } catch (_) {}
       }
-      renderChapter(payload, { replaceHistory: Boolean(options.replaceHistory) });
+      renderChapter(payload, { replaceHistory: Boolean(options.replaceHistory), resume: Boolean(options.resume) });
       const titleBundle = state.cache.titles.get(`${payload.title_id}:${state.chapterLang}`);
       const coverUrl = titleBundle?.cover_url || "";
       await persistProgress({ title_id: payload.title_id, title_name: payload.title, chapter_id: payload.chapter_id, chapter_number: payload.chapter_number, page_index: state.readerCurrentPage || 1, total_pages: payload.images?.length || 0, cover_url: coverUrl });
@@ -3650,7 +3901,7 @@ function onBack() {
   if ($$("readerModeDialog")?.classList.contains("open")) { closeReaderModeDialog(); return; }
   if ($$("readerSettingsSheet")?.classList.contains("open")) { closeReaderSettings(); return; }
   if (state.currentPage === "readerPage" && state.currentTitleId) { openTitle(state.currentTitleId, false, { route: "chapters" }); return; }
-  if (state.currentPage === "detailPage" || state.currentPage === "catalogPage") { setPage("homePage"); syncUrl({ route: "home" }); return; }
+  if (state.currentPage === "detailPage" || state.currentPage === "catalogPage" || state.currentPage === "searchPage" || state.currentPage === "newsPage") { setPage("homePage"); syncUrl({ route: "home" }); return; }
   loadHome(true);
 }
 
@@ -3661,7 +3912,8 @@ document.querySelectorAll(".nav-item").forEach(item => {
   item.addEventListener("click", async () => {
     const tab = item.dataset.tab;
     if (tab === "home") { if (state.currentPage === "homePage") window.scrollTo({ top: 0, behavior: "smooth" }); else loadHome(); }
-    else if (["manga", "manhwa", "manhua"].includes(tab)) { openCatalogSection(tab, 1); }
+    else if (tab === "search") { openSearchPage(); }
+    else if (tab === "news") { openNewsPage(); }
     else if (tab === "lib") { await syncFavoritesWithServer(); openLibPage(); }
     else if (tab === "updates") { await syncFavoritesWithServer(); openUpdatesPage(); }
     else if (tab === "history") { await syncProgressWithServer(); openHistoryPage(); }
@@ -3671,30 +3923,46 @@ document.querySelectorAll(".nav-item").forEach(item => {
 
 $$("backBtn").addEventListener("click", onBack);
 $$("brandBtn").addEventListener("click", () => loadHome());
-$$("profileBtn").addEventListener("click", async () => { await syncUserDataWithServer(); openProfilePage(); });
+$$("profileBtn")?.addEventListener("click", async () => { await syncUserDataWithServer(); openProfilePage(); });
 $$("topbarSearchClear").addEventListener("click", clearSearch);
 
-let _searchTimer, _searchTimer2;
-$$("homeSearchInput").addEventListener("input", () => {
-  const v = $$("homeSearchInput").value.trim();
-  if (!v) { clearSearch(); return; }
-  clearTimeout(_searchTimer);
-  _searchTimer = setTimeout(() => doSearch(v), 320);
-});
-$$("homeSearchInput").addEventListener("keydown", e => {
-  if (e.key === "Enter") { e.preventDefault(); doSearch($$("homeSearchInput").value); }
-  if (e.key === "Escape") clearSearch();
-});
+let _searchTimer2, _searchPageTimer;
 $$("topbarSearchInput").addEventListener("input", () => {
   const v = $$("topbarSearchInput").value.trim();
   $$("topbarSearchClear").classList.toggle("visible", v.length > 0);
   clearTimeout(_searchTimer2);
-  if (v.length >= 3) _searchTimer2 = setTimeout(() => doSearch(v), 650);
+  if ($$("searchPageInput") && $$("searchPageInput").value !== $$("topbarSearchInput").value) $$("searchPageInput").value = $$("topbarSearchInput").value;
+  if (v.length >= 3) _searchTimer2 = setTimeout(() => doSearch(v), 850);
   else if (!v) clearSearch();
 });
 $$("topbarSearchInput").addEventListener("keydown", e => {
   if (e.key === "Enter") { e.preventDefault(); doSearch($$("topbarSearchInput").value); }
   if (e.key === "Escape") clearSearch();
+});
+
+function openSearchPage() {
+  setPage("searchPage");
+  syncUrl({ route: "search" }, false);
+  setTimeout(() => $$("searchPageInput")?.focus(), 80);
+}
+$$("searchPageInput")?.addEventListener("input", () => {
+  const v = $$("searchPageInput").value.trim();
+  $$("searchPageClear")?.classList.toggle("visible", v.length > 0);
+  if ($$("topbarSearchInput") && $$("topbarSearchInput").value !== $$("searchPageInput").value) {
+    $$("topbarSearchInput").value = $$("searchPageInput").value;
+    $$("topbarSearchClear").classList.toggle("visible", v.length > 0);
+  }
+  clearTimeout(_searchPageTimer);
+  if (v.length >= 3) _searchPageTimer = setTimeout(() => doSearch(v), 850);
+  else if (!v) clearSearch();
+});
+$$("searchPageInput")?.addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); doSearch($$("searchPageInput").value); }
+  if (e.key === "Escape") clearSearch();
+});
+$$("searchPageClear")?.addEventListener("click", () => {
+  clearSearch();
+  $$("searchPageInput")?.focus();
 });
 
 $$("heroPrimaryBtn").onclick = () => jumpTo("featuredSection");
@@ -3706,6 +3974,8 @@ window.addEventListener("popstate", async () => {
   const boot = getBootParams();
   if (boot.lang) saveChapterLanguage(boot.lang);
   if (boot.route === "lib") { await syncFavoritesWithServer(); openLibPage(); return; }
+  if (boot.route === "search") { openSearchPage(); return; }
+  if (boot.route === "news") { openNewsPage(); return; }
   if (boot.route === "updates") { await syncFavoritesWithServer(); openUpdatesPage(); return; }
   if (boot.route === "history") { await syncProgressWithServer(); openHistoryPage(); return; }
   if (boot.route === "profile") { await syncUserDataWithServer(); openProfilePage(); return; }
@@ -3724,6 +3994,8 @@ async function boot() {
     syncUserDataWithServer().catch(() => {});
   }
   if (b.route === "lib") { await loadHome(); openLibPage(); return; }
+  if (b.route === "search") { await loadHome(); openSearchPage(); return; }
+  if (b.route === "news") { await loadHome(); openNewsPage(); return; }
   if (b.route === "updates") { await loadHome(); openUpdatesPage(); return; }
   if (b.route === "history") { openHistoryPage(); return; }
   if (b.route === "profile") { openProfilePage(); return; }
