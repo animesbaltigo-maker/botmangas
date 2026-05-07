@@ -32,9 +32,12 @@ from config import (
     CACHE_CLEANUP_INTERVAL_SECONDS,
     CACHE_CLEANUP_STARTUP,
     DATA_DIR,
+    DISTRIBUTION_TAG,
     HOME_SECTION_LIMIT,
     API_CACHE_MAX_ENTRIES,
     API_RATE_LIMIT_PER_MINUTE,
+    PDF_BULK_ALLOWED_IDS,
+    PDF_PROTECT_CONTENT,
     PREFERRED_CHAPTER_LANG,
     WEBAPP_CORS_ORIGINS,
     WEBAPP_TRUST_QUERY_USER_ID,
@@ -55,8 +58,9 @@ from services.cakto_gateway import extract_webhook_secret_values, process_cakto_
 from services.cache_cleanup import start_cache_cleanup_loop, stop_cache_cleanup_loop
 from services.media_pipeline import resolve_telegraph_asset_path
 from services.metrics import get_last_read_entry, get_recently_read, mark_chapter_read
-from services.offline_access import init_offline_access_db
+from services.offline_access import init_offline_access_db, is_offline_user_allowed
 from services.offline_messages import offline_welcome_message
+from services.pdf_service import get_or_build_pdf
 from services.language_prefs import (
     bundle_language_options,
     get_user_language,
@@ -169,6 +173,14 @@ class PreferencesPayload(BaseModel):
     user_id: str = ""
     init_data: str = ""
     chapter_language: str = Field(min_length=1)
+
+
+class ChapterDownloadPayload(BaseModel):
+    user_id: str = ""
+    init_data: str = ""
+    chapter_id: str = Field(min_length=1)
+    title_id: str = ""
+    lang: str = ""
 
 
 class FavoritesSyncPayload(BaseModel):
@@ -811,6 +823,61 @@ async def _chapter_payload(chapter_id: str, lang: str) -> dict[str, Any]:
     return await _cached("chapter", _CHAPTER_TTL, producer, chapter_id=chapter_id, lang=lang)
 
 
+def _can_download_from_webapp(user_id: str | int | None) -> bool:
+    try:
+        uid = int(str(user_id or "").strip())
+    except (TypeError, ValueError):
+        return False
+    return uid in set(PDF_BULK_ALLOWED_IDS) or is_offline_user_allowed(uid)
+
+
+def _download_caption(chapter: dict[str, Any]) -> str:
+    title = html.escape(chapter.get("title") or "Manga")
+    number = html.escape(str(chapter.get("chapter_number") or "?"))
+    tag = html.escape(DISTRIBUTION_TAG or "")
+    return (
+        f"<b>{title}</b>\n"
+        f"Capítulo <code>{number}</code>\n"
+        f"{tag}"
+    ).strip()
+
+
+async def _telegram_api(method: str, *, data: dict[str, Any] | None = None, files: dict[str, Any] | None = None) -> dict[str, Any]:
+    if not BOT_TOKEN:
+        raise HTTPException(status_code=503, detail="BOT_TOKEN não configurado para enviar o arquivo.")
+    timeout = httpx.Timeout(connect=10.0, read=120.0, write=120.0, pool=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",
+            data=data or {},
+            files=files,
+        )
+    try:
+        payload = response.json()
+    except Exception:
+        payload = {"ok": False, "description": response.text}
+    if response.status_code >= 400 or not payload.get("ok"):
+        detail = payload.get("description") or f"Telegram API HTTP {response.status_code}"
+        raise HTTPException(status_code=502, detail=detail)
+    return payload
+
+
+async def _telegram_edit_message(chat_id: int, message_id: int, text: str) -> None:
+    try:
+        await _telegram_api(
+            "editMessageText",
+            data={
+                "chat_id": str(chat_id),
+                "message_id": str(message_id),
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": "true",
+            },
+        )
+    except Exception:
+        pass
+
+
 @app.get("/api/ping")
 async def ping() -> dict[str, bool]:
     return {"ok": True}
@@ -1281,6 +1348,104 @@ async def api_chapter(request: Request, chapter_id: str, user_id: str = Query(""
         return await _chapter_payload(chapter_id, resolved_lang)
     except Exception as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/api/download/chapter")
+async def api_download_chapter(request: Request, payload: ChapterDownloadPayload):
+    user_id = _authenticated_user_id(request, payload.user_id, payload.init_data)
+    if not _can_download_from_webapp(user_id):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Seu acesso offline ainda não está ativo. Abra o chat do bot e envie /plano "
+                "para escolher um plano. Se um administrador liberou você manualmente com /liberar, "
+                "feche e abra o webapp novamente."
+            ),
+        )
+
+    chat_id = int(user_id)
+    resolved_lang = normalize_language(payload.lang) or get_user_language(user_id, PREFERRED_CHAPTER_LANG)
+    chapter = await _chapter_payload(payload.chapter_id, resolved_lang)
+    images = chapter.get("images") or []
+    if not images:
+        raise HTTPException(status_code=404, detail="Não encontrei imagens para gerar esse PDF.")
+
+    status = await _telegram_api(
+        "sendMessage",
+        data={
+            "chat_id": str(chat_id),
+            "text": (
+                "📥 <b>Pedido recebido pelo webapp</b>\n\n"
+                f"Obra: <i>{html.escape(chapter.get('title') or 'Manga')}</i>\n"
+                f"Capítulo: <i>{html.escape(str(chapter.get('chapter_number') or '?'))}</i>\n\n"
+                "Vou preparar o PDF e enviar o arquivo aqui no chat."
+            ),
+            "parse_mode": "HTML",
+            "disable_web_page_preview": "true",
+        },
+    )
+    message_id = int((status.get("result") or {}).get("message_id") or 0)
+
+    async def progress(done: int, total: int) -> None:
+        if not message_id:
+            return
+        pct = int((done / max(total, 1)) * 100)
+        await _telegram_edit_message(
+            chat_id,
+            message_id,
+            (
+                "📥 <b>Gerando PDF</b>\n\n"
+                f"Obra: <i>{html.escape(chapter.get('title') or 'Manga')}</i>\n"
+                f"Capítulo: <i>{html.escape(str(chapter.get('chapter_number') or '?'))}</i>\n"
+                f"Progresso: <b>{pct}%</b>"
+            ),
+        )
+
+    try:
+        pdf_path, pdf_name = await get_or_build_pdf(
+            chapter_id=chapter["chapter_id"],
+            chapter_number=chapter.get("chapter_number") or "?",
+            title_name=chapter.get("title") or "Manga",
+            images=images,
+            progress_cb=progress,
+        )
+        with open(pdf_path, "rb") as file:
+            await _telegram_api(
+                "sendDocument",
+                data={
+                    "chat_id": str(chat_id),
+                    "caption": _download_caption(chapter),
+                    "parse_mode": "HTML",
+                    "protect_content": "true" if PDF_PROTECT_CONTENT else "false",
+                },
+                files={"document": (pdf_name, file, "application/pdf")},
+            )
+        if message_id:
+            await _telegram_edit_message(
+                chat_id,
+                message_id,
+                (
+                    "✅ <b>PDF enviado</b>\n\n"
+                    f"Obra: <i>{html.escape(chapter.get('title') or 'Manga')}</i>\n"
+                    f"Capítulo: <i>{html.escape(str(chapter.get('chapter_number') or '?'))}</i>"
+                ),
+            )
+    except HTTPException:
+        raise
+    except Exception as error:
+        if message_id:
+            await _telegram_edit_message(
+                chat_id,
+                message_id,
+                f"❌ <b>Não consegui gerar o PDF.</b>\n\n<code>{html.escape(str(error))}</code>",
+            )
+        raise HTTPException(status_code=500, detail=f"Não consegui gerar o PDF: {error}") from error
+
+    return {
+        "ok": True,
+        "message": "Tudo certo. O PDF será enviado no chat do bot.",
+        "chapter_id": chapter.get("chapter_id") or payload.chapter_id,
+    }
 
 
 @app.get("/api/preferences")
