@@ -20,59 +20,58 @@
     "pt": "🇧🇷 Português",
     "en": "🇺🇸 English",
     "es": "🇪🇸 Español"
-   },
+  },
   "start": {
-    "welcome": "📚 <b>{brand}</b>\\n\\n<blockquote><b>Bienvenido:</b> <i>{name}</i>\\n<b>Catálogo:</b> <i>Manga, manhwa y manhua</i>\\n<b>Recursos:</b> <i>Favoritos, historial y lectura sin conexión</i></blockquote>\\n\\n✨ <i>Elige abajo cómo quieres continuar o escribe el nombre de una obra.</i>",
-    "loading_title": "⏳ <b>Abriendo obra...</b>\n\nCargando detalles y capítulos.",
-    "loading_chapter": "⏳ <b>Abriendo capítulo...</b>\n\nPreparando la lectura.",
-    "timeout": "⚠️ Esta solicitud tardó demasiado. Inténtalo otra vez en unos segundos.",
-    "duplicate": "⏳ Esta solicitud ya se está procesando.",
-    "cooldown": "⏳ Espera un momento antes de repetir esta acción.",
-    "ref_ok": "✅ Invitación registrada. Sigue usando el bot para que entre en revisión.",
-    "ref_self": "Este es tu propio enlace de invitación, así que no cuenta.",
-    "ref_already_same": "✅ Esta invitación ya estaba conectada al mismo enlace.",
-    "ref_exists": "Ya entraste usando otra invitación."
+    "welcome": "📚 <b>{brand}</b>\\n\\n<blockquote><b>Welcome:</b> <i>{name}</i>\\n<b>Catalog:</b> <i>Manga, manhwa and manhua</i>\\n<b>Features:</b> <i>Favorites, history and offline reading</i></blockquote>\\n\\n✨ <i>Choose below how you want to continue or type a title.</i>",
+    "loading_title": "⏳ <b>Opening title...</b>\n\nLoading details and chapters.",
+    "loading_chapter": "⏳ <b>Opening chapter...</b>\n\nPreparing the reader.",
+    "timeout": "⚠️ This request took too long. Please try again in a few seconds.",
+    "duplicate": "⏳ This request is already being processed.",
+    "cooldown": "⏳ Wait a moment before repeating this action.",
+    "ref_ok": "✅ Referral registered. Keep using the bot so it can be reviewed.",
+    "ref_self": "This is your own referral link, so it does not count.",
+    "ref_already_same": "✅ This referral was already connected to the same link.",
+    "ref_exists": "You already joined through another referral."
   },
   "search": {
-    "how_to": "🔎 <b>Cómo buscar</b>\n\nEnvía <code>/buscar nombre del manga</code> o escribe solo el nombre en privado.\n\nEjemplo: <code>Solo Leveling</code>",
-    "loading": "🔎 <b>Buscando en la biblioteca...</b>\n<i>Normalmente tarda pocos segundos.</i>",
-    "results": "🔎 <b>Resultados de búsqueda</b>\n\n<blockquote>📚 <b>Búsqueda:</b> {query}\n📄 <b>Página:</b> {page}/{total_pages}\n📦 <b>Resultados:</b> {total}</blockquote>\n\nToca una obra para abrirla.",
-    "no_results": "⚠️ No encontré esa obra ahora. Prueba otro nombre o una variación del título.",
-    "too_short": "⚠️ Escribe al menos 2 caracteres para buscar.",
-    "timeout": "⚠️ La búsqueda tardó demasiado. Inténtalo otra vez en unos segundos.",
-    "error": "⚠️ No pude cargar esta búsqueda ahora. Inténtalo otra vez en unos segundos.",
-    "cooldown": "⏳ Espera un momento antes de repetir esta búsqueda.",
-    "inflight": "⏳ Esta búsqueda ya se está procesando."
+    "how_to": "🔎 <b>How to search</b>\n\nSend <code>/buscar manga title</code> or simply type the title in private chat.\n\nExample: <code>Solo Leveling</code>",
+    "loading": "🔎 <b>Searching the library...</b>\n<i>This usually takes just a few seconds.</i>",
+    "results": "🔎 <b>Search results</b>\n\n<blockquote>📚 <b>Query:</b> {query}\n📄 <b>Page:</b> {page}/{total_pages}\n📦 <b>Results:</b> {total}</blockquote>\n\nTap a title to open it.",
+    "no_results": "⚠️ I could not find that title right now. Try another name or spelling variation.",
+    "too_short": "⚠️ Type at least 2 characters to search.",
+    "timeout": "⚠️ The search took too long. Please try again in a few seconds.",
+    "error": "⚠️ I could not load this search right now. Please try again in a few seconds.",
+    "cooldown": "⏳ Wait a moment before repeating this search.",
+    "inflight": "⏳ This search is already being processed."
   },
   "help": {
-    "text": "📚 <b>Ayuda - {brand}</b>\n\n🔎 <b>Buscar</b>\nUsa <code>/buscar nombre</code> o escribe el nombre en privado.\n\n📖 <b>Leer</b>\nAbre una obra, elige un capítulo y lee en el MiniApp.\n\n⭐ <b>Extras</b>\n/mperfil - perfil de lectura\n/plano - planes offline\n/indicacoes - programa de afiliados\n/idioma - cambiar idioma"
+    "text": "📚 <b>Help - {brand}</b>\n\n🔎 <b>Search</b>\nUse <code>/buscar title</code> or type the title in private chat.\n\n📖 <b>Read</b>\nOpen a title, choose a chapter and read in the MiniApp.\n\n⭐ <b>Extras</b>\n/mperfil - reading profile\n/plano - offline plans\n/indicacoes - affiliate program\n/idioma - change language"
   },
   "plan": {
-    "not_defined": "no definido",
-    "lifetime": "vitalicio",
-    "one_day": "1 día",
-    "days": "{days} días",
-    "never_expires": "no expira",
-    "expired": "expirado",
-    "remaining_days": "{days} día(s) y {hours}h",
-    "remaining_hours": "{hours}h y {minutes}min",
+    "not_defined": "not set",
+    "lifetime": "lifetime",
+    "one_day": "1 day",
+    "days": "{days} days",
+    "never_expires": "never expires",
+    "expired": "expired",
+    "remaining_days": "{days} day(s) and {hours}h",
+    "remaining_hours": "{hours}h and {minutes}min",
     "remaining_minutes": "{minutes}min",
-    "status_none": "sin plan",
-    "status_active": "activo",
-    "status_expired": "expirado",
-    "status_revoked": "bloqueado",
-    "status_inactive": "inactivo",
-    "renew_button": "🔄 Renovar {plan}",
-    "no_plan_text": "📥 <b>Mi plan offline</b>\n\n» <b>Estado:</b> <i>{status}</i>\n» <b>ID:</b> <code>{uid}</code>\n\nTodavía no tienes un plan activo en <b>{brand}</b>.\nElige un plan abajo para liberar PDFs y EPUBs offline.",
-    "active_text": "📥 <b>Mi plan offline</b>\n\n» <b>Estado:</b> <i>{status}</i>\n» <b>Plan:</b> <i>{plan}</i>\n» <b>Duración:</b> <i>{duration}</i>\n» <b>Válido hasta:</b> <i>{expires}</i>\n» <b>Tiempo restante:</b> <i>{remaining}</i>\n» <b>ID:</b> <code>{uid}</code>\n\nUsa los botones abajo para renovar o hablar con soporte."
+    "status_none": "no plan",
+    "status_active": "active",
+    "status_expired": "expired",
+    "status_revoked": "blocked",
+    "status_inactive": "inactive",
+    "renew_button": "🔄 Renew {plan}",
+    "no_plan_text": "📥 <b>My offline plan</b>\n\n» <b>Status:</b> <i>{status}</i>\n» <b>ID:</b> <code>{uid}</code>\n\nYou do not have an active plan on <b>{brand}</b> yet.\nChoose a plan below to unlock offline PDFs and EPUBs.",
+    "active_text": "📥 <b>My offline plan</b>\n\n» <b>Status:</b> <i>{status}</i>\n» <b>Plan:</b> <i>{plan}</i>\n» <b>Duration:</b> <i>{duration}</i>\n» <b>Valid until:</b> <i>{expires}</i>\n» <b>Time left:</b> <i>{remaining}</i>\n» <b>ID:</b> <code>{uid}</code>\n\nUse the buttons below to renew or contact support."
   },
   "referral": {
-    "open_panel": "💼 Abrir panel de afiliados",
-    "share_telegram": "Compartir en Telegram",
-    "share_whatsapp": "Compartir en WhatsApp",
-    "share_text": "Entra a este bot de manga conmigo:",
-    "no_webapp": "Configura WEBAPP_BASE_URL para activar el panel completo.",
-    "body": "💸 <b>Programa de Afiliados Baltigo</b>\n\n<i>Convierte tus referidos en comisión dentro de Telegram.</i>\n\n📊 <b>Tu rendimiento</b>\n\n💰 Disponible: <b>{available}</b>\n⏳ En garantía: <b>{pending}</b>\n📈 Ventas válidas: <b>{sales}</b>\n\n🚀 Tú recomiendas, la persona se suscribe y la comisión se calcula automáticamente. Después del período de garantía, el valor queda disponible para retiro por Pix."
+    "open_panel": "💼 Open affiliate dashboard",
+    "share_telegram": "Share on Telegram",
+    "share_whatsapp": "Share on WhatsApp",
+    "share_text": "Join this manga bot with me:",
+    "no_webapp": "Configure WEBAPP_BASE_URL to enable the full dashboard.",
+    "body": "💸 <b>Baltigo Affiliate Program</b>\n\n<i>Turn your referrals into commissions inside Telegram.</i>\n\n📊 <b>Your performance</b>\n\n💰 Available: <b>{available}</b>\n⏳ Pending: <b>{pending}</b>\n📈 Valid sales: <b>{sales}</b>\n\n🚀 You refer, they subscribe, and commission is calculated automatically. After the guarantee period, the amount becomes available for Pix withdrawal."
   }
 }
-
