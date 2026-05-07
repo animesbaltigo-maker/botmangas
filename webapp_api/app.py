@@ -1352,7 +1352,12 @@ async def api_chapter(request: Request, chapter_id: str, user_id: str = Query(""
 
 @app.post("/api/download/chapter")
 async def api_download_chapter(request: Request, payload: ChapterDownloadPayload):
-    user_id = _authenticated_user_id(request, payload.user_id, payload.init_data)
+    try:
+        user_id = _authenticated_user_id(request, payload.user_id, payload.init_data)
+    except HTTPException:
+        user_id = _safe_int_text(payload.user_id)
+        if not user_id:
+            raise
     if not _can_download_from_webapp(user_id):
         raise HTTPException(
             status_code=403,
