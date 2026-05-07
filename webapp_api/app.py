@@ -14,7 +14,7 @@ from urllib.parse import parse_qsl
 from threading import Lock
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -60,6 +60,7 @@ from services.media_pipeline import resolve_telegraph_asset_path
 from services.metrics import get_last_read_entry, get_recently_read, mark_chapter_read
 from services.offline_access import init_offline_access_db, is_offline_user_allowed
 from services.offline_messages import offline_welcome_message
+from services.epub_service import get_or_build_epub
 from services.pdf_service import get_or_build_pdf
 from services.language_prefs import (
     bundle_language_options,
@@ -181,6 +182,7 @@ class ChapterDownloadPayload(BaseModel):
     chapter_id: str = Field(min_length=1)
     title_id: str = ""
     lang: str = ""
+    format: str = "pdf"
 
 
 class FavoritesSyncPayload(BaseModel):
@@ -842,6 +844,10 @@ def _download_caption(chapter: dict[str, Any]) -> str:
     ).strip()
 
 
+def _download_mime(format_name: str) -> str:
+    return "application/epub+zip" if format_name == "epub" else "application/pdf"
+
+
 async def _telegram_api(method: str, *, data: dict[str, Any] | None = None, files: dict[str, Any] | None = None) -> dict[str, Any]:
     if not BOT_TOKEN:
         raise HTTPException(status_code=503, detail="BOT_TOKEN não configurado para enviar o arquivo.")
@@ -876,6 +882,127 @@ async def _telegram_edit_message(chat_id: int, message_id: int, text: str) -> No
         )
     except Exception:
         pass
+
+
+async def _run_chapter_download_job(
+    *,
+    chat_id: int,
+    message_id: int,
+    chapter: dict[str, Any],
+    format_name: str,
+) -> None:
+    label = "EPUB" if format_name == "epub" else "PDF"
+
+    async def progress(done: int, total: int) -> None:
+        if not message_id:
+            return
+        pct = int((done / max(total, 1)) * 100)
+        await _telegram_edit_message(
+            chat_id,
+            message_id,
+            (
+                f"📥 <b>Gerando {label}</b>\n\n"
+                f"Obra: <i>{html.escape(chapter.get('title') or 'Manga')}</i>\n"
+                f"Capítulo: <i>{html.escape(str(chapter.get('chapter_number') or '?'))}</i>\n"
+                f"Progresso: <b>{pct}%</b>"
+            ),
+        )
+
+    try:
+        if format_name == "epub":
+            file_path, file_name = await get_or_build_epub(
+                chapter_id=chapter["chapter_id"],
+                chapter_number=chapter.get("chapter_number") or "?",
+                title_name=chapter.get("title") or "Manga",
+                images=chapter.get("images") or [],
+                progress_cb=progress,
+            )
+        else:
+            file_path, file_name = await get_or_build_pdf(
+                chapter_id=chapter["chapter_id"],
+                chapter_number=chapter.get("chapter_number") or "?",
+                title_name=chapter.get("title") or "Manga",
+                images=chapter.get("images") or [],
+                progress_cb=progress,
+            )
+
+        with open(file_path, "rb") as file:
+            await _telegram_api(
+                "sendDocument",
+                data={
+                    "chat_id": str(chat_id),
+                    "caption": _download_caption(chapter),
+                    "parse_mode": "HTML",
+                    "protect_content": "true" if PDF_PROTECT_CONTENT else "false",
+                },
+                files={"document": (file_name, file, _download_mime(format_name))},
+            )
+        if message_id:
+            await _telegram_edit_message(
+                chat_id,
+                message_id,
+                (
+                    f"✅ <b>{label} enviado</b>\n\n"
+                    f"Obra: <i>{html.escape(chapter.get('title') or 'Manga')}</i>\n"
+                    f"Capítulo: <i>{html.escape(str(chapter.get('chapter_number') or '?'))}</i>"
+                ),
+            )
+    except Exception as error:
+        if message_id:
+            await _telegram_edit_message(
+                chat_id,
+                message_id,
+                f"❌ <b>Não consegui gerar o {label}.</b>\n\n<code>{html.escape(str(error))}</code>",
+            )
+
+
+async def _run_chapter_download_request(
+    *,
+    chat_id: int,
+    chapter_id: str,
+    lang: str,
+    format_name: str,
+) -> None:
+    label = "EPUB" if format_name == "epub" else "PDF"
+    message_id = 0
+    try:
+        status = await _telegram_api(
+            "sendMessage",
+            data={
+                "chat_id": str(chat_id),
+                "text": (
+                    "📥 <b>Download iniciado pelo webapp</b>\n\n"
+                    f"Formato: <b>{label}</b>\n\n"
+                    "Pode continuar escolhendo outros capítulos. Vou enviar o arquivo aqui quando ficar pronto."
+                ),
+                "parse_mode": "HTML",
+                "disable_web_page_preview": "true",
+            },
+        )
+        message_id = int((status.get("result") or {}).get("message_id") or 0)
+        chapter = await _chapter_payload(chapter_id, lang)
+        images = chapter.get("images") or []
+        if not images:
+            if message_id:
+                await _telegram_edit_message(
+                    chat_id,
+                    message_id,
+                    f"❌ <b>Não encontrei imagens para gerar esse {label}.</b>",
+                )
+            return
+        await _run_chapter_download_job(
+            chat_id=chat_id,
+            message_id=message_id,
+            chapter=chapter,
+            format_name=format_name,
+        )
+    except Exception as error:
+        if message_id:
+            await _telegram_edit_message(
+                chat_id,
+                message_id,
+                f"❌ <b>Não consegui iniciar o {label}.</b>\n\n<code>{html.escape(str(error))}</code>",
+            )
 
 
 @app.get("/api/ping")
@@ -1351,7 +1478,7 @@ async def api_chapter(request: Request, chapter_id: str, user_id: str = Query(""
 
 
 @app.post("/api/download/chapter")
-async def api_download_chapter(request: Request, payload: ChapterDownloadPayload):
+async def api_download_chapter(request: Request, background_tasks: BackgroundTasks, payload: ChapterDownloadPayload):
     try:
         user_id = _authenticated_user_id(request, payload.user_id, payload.init_data)
     except HTTPException:
@@ -1368,88 +1495,25 @@ async def api_download_chapter(request: Request, payload: ChapterDownloadPayload
             ),
         )
 
+    format_name = str(payload.format or "pdf").strip().lower()
+    if format_name not in {"pdf", "epub"}:
+        raise HTTPException(status_code=400, detail="Formato inválido. Escolha PDF ou EPUB.")
+    label = "EPUB" if format_name == "epub" else "PDF"
     chat_id = int(user_id)
     resolved_lang = normalize_language(payload.lang) or get_user_language(user_id, PREFERRED_CHAPTER_LANG)
-    chapter = await _chapter_payload(payload.chapter_id, resolved_lang)
-    images = chapter.get("images") or []
-    if not images:
-        raise HTTPException(status_code=404, detail="Não encontrei imagens para gerar esse PDF.")
-
-    status = await _telegram_api(
-        "sendMessage",
-        data={
-            "chat_id": str(chat_id),
-            "text": (
-                "📥 <b>Pedido recebido pelo webapp</b>\n\n"
-                f"Obra: <i>{html.escape(chapter.get('title') or 'Manga')}</i>\n"
-                f"Capítulo: <i>{html.escape(str(chapter.get('chapter_number') or '?'))}</i>\n\n"
-                "Vou preparar o PDF e enviar o arquivo aqui no chat."
-            ),
-            "parse_mode": "HTML",
-            "disable_web_page_preview": "true",
-        },
+    background_tasks.add_task(
+        _run_chapter_download_request,
+        chat_id=chat_id,
+        chapter_id=payload.chapter_id,
+        lang=resolved_lang,
+        format_name=format_name,
     )
-    message_id = int((status.get("result") or {}).get("message_id") or 0)
-
-    async def progress(done: int, total: int) -> None:
-        if not message_id:
-            return
-        pct = int((done / max(total, 1)) * 100)
-        await _telegram_edit_message(
-            chat_id,
-            message_id,
-            (
-                "📥 <b>Gerando PDF</b>\n\n"
-                f"Obra: <i>{html.escape(chapter.get('title') or 'Manga')}</i>\n"
-                f"Capítulo: <i>{html.escape(str(chapter.get('chapter_number') or '?'))}</i>\n"
-                f"Progresso: <b>{pct}%</b>"
-            ),
-        )
-
-    try:
-        pdf_path, pdf_name = await get_or_build_pdf(
-            chapter_id=chapter["chapter_id"],
-            chapter_number=chapter.get("chapter_number") or "?",
-            title_name=chapter.get("title") or "Manga",
-            images=images,
-            progress_cb=progress,
-        )
-        with open(pdf_path, "rb") as file:
-            await _telegram_api(
-                "sendDocument",
-                data={
-                    "chat_id": str(chat_id),
-                    "caption": _download_caption(chapter),
-                    "parse_mode": "HTML",
-                    "protect_content": "true" if PDF_PROTECT_CONTENT else "false",
-                },
-                files={"document": (pdf_name, file, "application/pdf")},
-            )
-        if message_id:
-            await _telegram_edit_message(
-                chat_id,
-                message_id,
-                (
-                    "✅ <b>PDF enviado</b>\n\n"
-                    f"Obra: <i>{html.escape(chapter.get('title') or 'Manga')}</i>\n"
-                    f"Capítulo: <i>{html.escape(str(chapter.get('chapter_number') or '?'))}</i>"
-                ),
-            )
-    except HTTPException:
-        raise
-    except Exception as error:
-        if message_id:
-            await _telegram_edit_message(
-                chat_id,
-                message_id,
-                f"❌ <b>Não consegui gerar o PDF.</b>\n\n<code>{html.escape(str(error))}</code>",
-            )
-        raise HTTPException(status_code=500, detail=f"Não consegui gerar o PDF: {error}") from error
 
     return {
         "ok": True,
-        "message": "Tudo certo. O PDF será enviado no chat do bot.",
-        "chapter_id": chapter.get("chapter_id") or payload.chapter_id,
+        "message": f"Pedido recebido. O {label} será enviado no chat do bot.",
+        "chapter_id": payload.chapter_id,
+        "format": format_name,
     }
 
 
