@@ -1838,7 +1838,7 @@ async function doSearch(query, page = 1) {
     try {
       let data = state.cache.search.get(key);
       if (!data) {
-        data = await api(`/api/search?q=${encodeURIComponent(q)}&limit=24&page=${safePage}`);
+        data = await api(`/api/search?q=${encodeURIComponent(q)}&limit=24&page=${safePage}`, { timeoutMs: 30000 });
         state.cache.search.set(key, data);
       }
       const results = data.results || [];
@@ -2471,7 +2471,7 @@ async function openCatalogSection(section = "manga", page = 1) {
   syncUrl({ route: key }, false);
 
   try {
-    const data = await api(`/api/sections/${encodeURIComponent(key)}?limit=24&page=${safePage}`);
+    const data = await api(`/api/sections/${encodeURIComponent(key)}?limit=24&page=${safePage}`, { timeoutMs: 45000 });
     const items = data.items || [];
     renderGrid("catalogPageGrid", items, { emptyText: `Nada encontrado em ${sectionTitle(key)}.` });
     const totalPages = Number(data.total_pages || 1);
@@ -2938,7 +2938,7 @@ async function openTitle(titleId, force = false, options = {}) {
     try {
       let bundle = state.cache.titles.get(key);
       if (!bundle || force) {
-        bundle = await api(`/api/title/${encodeURIComponent(titleId)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`);
+        bundle = await api(`/api/title/${encodeURIComponent(titleId)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`, { timeoutMs: 45000 });
         const local = getProgress(titleId);
         if (local && !bundle.last_read) bundle.last_read = { title_id: local.title_id, title_name: local.title_name, chapter_id: local.chapter_id, chapter_number: local.chapter_number };
         state.cache.titles.set(key, bundle);
@@ -2946,7 +2946,7 @@ async function openTitle(titleId, force = false, options = {}) {
       renderDetail(bundle, { route: options.route || "detail", replaceHistory: Boolean(options.replaceHistory) });
       [bundle?.last_read?.chapter_id, bundle?.latest_chapter?.chapter_id].forEach(async (cid) => {
         if (!cid || state.cache.chapters.has(`${cid}:${state.chapterLang}`)) return;
-        try { state.cache.chapters.set(`${cid}:${state.chapterLang}`, await api(`/api/chapter/${encodeURIComponent(cid)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`)); } catch (_) {}
+        try { state.cache.chapters.set(`${cid}:${state.chapterLang}`, await api(`/api/chapter/${encodeURIComponent(cid)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`, { timeoutMs: 30000 })); } catch (_) {}
       });
     } catch (err) {
       console.error("TITLE:", err);
@@ -3308,7 +3308,7 @@ async function appendNextReaderChapter(nextChapterId, previousPayload) {
     const key = `${String(nextChapterId)}:${state.chapterLang}`;
     let payload = state.cache.chapters.get(key);
     if (!payload) {
-      payload = await api(`/api/chapter/${encodeURIComponent(nextChapterId)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`);
+        payload = await api(`/api/chapter/${encodeURIComponent(nextChapterId)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`, { timeoutMs: 45000 });
       state.cache.chapters.set(key, payload);
     }
 
@@ -3537,13 +3537,13 @@ async function openChapter(chapterId, force = false, options = {}) {
     try {
       let payload = state.cache.chapters.get(key);
       if (!payload || force) {
-        payload = await api(`/api/chapter/${encodeURIComponent(chapterId)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`);
+        payload = await api(`/api/chapter/${encodeURIComponent(chapterId)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`, { timeoutMs: 45000 });
         state.cache.chapters.set(key, payload);
       }
       const titleKey = `${payload?.title_id || ""}:${state.chapterLang}`;
       if (payload?.title_id && !state.cache.titles.has(titleKey)) {
         try {
-          const bundle = await api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`);
+          const bundle = await api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`, { timeoutMs: 45000 });
           state.cache.titles.set(titleKey, bundle);
           state.currentTitleBundle = bundle;
         } catch (_) {}
@@ -3556,10 +3556,10 @@ async function openChapter(chapterId, force = false, options = {}) {
       [nav.next, nav.prev].forEach(async (id) => {
         const chapterKey = `${id}:${state.chapterLang}`;
         if (!id || state.cache.chapters.has(chapterKey)) return;
-        try { state.cache.chapters.set(chapterKey, await api(`/api/chapter/${encodeURIComponent(id)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`)); } catch (_) {}
+        try { state.cache.chapters.set(chapterKey, await api(`/api/chapter/${encodeURIComponent(id)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`, { timeoutMs: 30000 })); } catch (_) {}
       });
       if (payload?.title_id && !state.cache.titles.has(titleKey)) {
-        api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`)
+        api(`/api/title/${encodeURIComponent(payload.title_id)}?lang=${encodeURIComponent(state.chapterLang)}${authUserQuery()}`, { timeoutMs: 45000 })
           .then(bundle => { state.cache.titles.set(titleKey, bundle); state.currentTitleBundle = bundle; })
           .catch(() => {});
       }
