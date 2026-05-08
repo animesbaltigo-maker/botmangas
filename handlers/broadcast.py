@@ -208,112 +208,77 @@ def _schedule_label(data: dict[str, object]) -> str:
 
 
 def _main_menu_text(data: dict[str, object], *, running: bool, note: str | None = None) -> str:
-    mode = str(data.get("mode") or "")
+    mode = data.get("mode")
     target_user_id = data.get("target_user_id")
     has_media = bool(data.get("has_media"))
-    text = str(data.get("text") or "")
+    has_text = bool(str(data.get("text") or "").strip())
     pin = bool(data.get("pin"))
+    status = "Broadcast em andamento" if running else "Parado"
 
     lines = [
-        "ðŸ“¬ <b>Painel de transmissÃ£o</b>",
+        "\U0001f4e3 <b>Painel de transmiss\u00e3o</b>",
         "",
-        "ðŸŸ¢ <b>Status:</b> <code>Broadcast em andamento</code>" if running else "âšªï¸ <b>Status:</b> <code>Parado</code>",
-        "<i>Monte, teste, agende e acompanhe seus envios com seguranÃ§a.</i>",
+        f"\u26aa\ufe0f <b>Status do sistema:</b> <code>{_escape(status)}</code>",
+        "",
+        "Configure e envie uma mensagem para os usu\u00e1rios do bot.",
         "",
     ]
     if note:
         lines.extend([f"<blockquote>{note}</blockquote>", ""])
 
     details = [
-        _format_line("Destino", f"<code>{_escape(_mode_label(mode))}</code>"),
+        f"\U0001f30d <b>Destino:</b> <code>{_escape(_mode_label(mode))}</code>",
+        f"\U0001f5bc\ufe0f <b>M\u00eddia:</b> <code>{_yes_no(has_media)}</code>",
+        f"\U0001f520 <b>Texto:</b> <code>{_yes_no(has_text)}</code>",
+        f"\u2328\ufe0f <b>Bot\u00f5es:</b> <code>{_button_count(data)}</code>",
+        f"\U0001f4cc <b>Fixar:</b> <code>{_yes_no(pin)}</code>",
     ]
     if mode == "single" and target_user_id:
-        details.append(_format_line("ID alvo", f"<code>{_escape(target_user_id)}</code>"))
-    details.extend(
-        [
-            _format_line("MÃ­dia", f"<code>{_yes_no(has_media)}</code>"),
-            _format_line("Texto", f"<code>{_yes_no(bool(text.strip()))}</code>"),
-            _format_line("BotÃµes", f"<code>{_button_count(data)}</code>"),
-            _format_line("Fixar", f"<code>{_yes_no(pin)}</code>"),
-            _format_line("Agendado", f"<code>{_escape(_schedule_label(data))}</code>"),
-            _format_line("UsuÃ¡rios salvos", f"<code>{get_total_users()}</code>"),
-        ]
-    )
+        details.insert(1, f"\U0001f194 <b>ID alvo:</b> <code>{_escape(target_user_id)}</code>")
     lines.append("<blockquote>" + "\n".join(details) + "</blockquote>")
-    lines.extend(["", "Escolha uma opÃ§Ã£o abaixo."])
+    lines.extend(["", f"<blockquote>\U0001f465 <b>Total salvo no bot:</b> <code>{get_total_users()}</code></blockquote>", "", "<i>Escolha uma op\u00e7\u00e3o abaixo.</i>"])
     return "\n".join(lines)
 
-
 def _main_menu_keyboard(data: dict[str, object], *, running: bool) -> InlineKeyboardMarkup:
-    mode = str(data.get("mode") or "")
-    if mode == "all":
-        mode_label = "ðŸŒ Todos"
-    elif mode == "single":
-        mode_label = "ðŸ‘¤ UsuÃ¡rio"
-    else:
-        mode_label = "ðŸŽ¯ Destino"
-
-    send_label = "â³ Rodando" if running else "ðŸš€ Enviar"
+    pin_label = "\u2705 Sim" if bool(data.get("pin")) else "\u274c N\u00e3o"
     return InlineKeyboardMarkup(
         [
-            [
-                InlineKeyboardButton(mode_label, callback_data="bc|set_mode"),
-                InlineKeyboardButton("ðŸ–¼ MÃ­dia", callback_data="bc|set_media"),
-            ],
-            [
-                InlineKeyboardButton("ðŸ“ Mensagem", callback_data="bc|set_text"),
-                InlineKeyboardButton(f"ðŸ”˜ BotÃµes ({_button_count(data)})", callback_data="bc|set_buttons"),
-            ],
-            [
-                InlineKeyboardButton("ðŸ§ª Enviar teste", callback_data="bc|test_send"),
-                InlineKeyboardButton("ðŸ—“ Agendar", callback_data="bc|schedule"),
-            ],
-            [
-                InlineKeyboardButton("ðŸ’¾ Salvar modelo", callback_data="bc|save_template"),
-                InlineKeyboardButton("ðŸ“š Usar modelo", callback_data="bc|use_template"),
-            ],
-            [
-                InlineKeyboardButton(f"ðŸ“Œ {_yes_no(bool(data.get('pin')))}", callback_data="bc|toggle_pin"),
-                InlineKeyboardButton("ðŸ‘€ PrÃ©via", callback_data="bc|preview"),
-            ],
-            [
-                InlineKeyboardButton(send_label, callback_data="bc|send"),
-                InlineKeyboardButton("ðŸ—‘ Limpar", callback_data="bc|reset"),
-            ],
-            [InlineKeyboardButton("âŒ Fechar", callback_data="bc|close")],
+            [InlineKeyboardButton("\U0001f30d Destino", callback_data="bc|set_mode")],
+            [InlineKeyboardButton("\U0001f5bc\ufe0f M\u00eddia", callback_data="bc|set_media"), InlineKeyboardButton("\U0001f440 Ver", callback_data="bc|view_media")],
+            [InlineKeyboardButton("\U0001f520 Texto", callback_data="bc|set_text"), InlineKeyboardButton("\U0001f440 Ver", callback_data="bc|view_text")],
+            [InlineKeyboardButton("\u2328\ufe0f Bot\u00f5es", callback_data="bc|set_buttons"), InlineKeyboardButton("\U0001f440 Ver", callback_data="bc|view_buttons")],
+            [InlineKeyboardButton("\U0001f4cc Fixar", callback_data="bc|toggle_pin"), InlineKeyboardButton(pin_label, callback_data="bc|toggle_pin")],
+            [InlineKeyboardButton("\U0001f440 Visualiza\u00e7\u00e3o completa", callback_data="bc|full_preview")],
+            [InlineKeyboardButton("\U0001f519 Voltar", callback_data="bc|close"), InlineKeyboardButton("Pr\u00f3ximo \u27a1\ufe0f", callback_data="bc|next")],
         ]
     )
-
 
 def _running_keyboard(control: dict[str, object]) -> InlineKeyboardMarkup:
     paused = bool(control.get("paused"))
-    first = InlineKeyboardButton("â–¶ï¸ Continuar", callback_data="bc|resume") if paused else InlineKeyboardButton("â¸ Pausar", callback_data="bc|pause")
-    return InlineKeyboardMarkup([[first, InlineKeyboardButton("ðŸ›‘ Cancelar", callback_data="bc|cancel_running")]])
-
+    first = InlineKeyboardButton("\u25b6\ufe0f Continuar", callback_data="bc|resume") if paused else InlineKeyboardButton("\u23f8 Pausar", callback_data="bc|pause")
+    return InlineKeyboardMarkup([[first, InlineKeyboardButton("\U0001f6d1 Cancelar", callback_data="bc|cancel_running")]])
 
 def _mode_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("ðŸŒ Todos", callback_data="bc|mode_all")],
-            [InlineKeyboardButton("ðŸ‘¤ UsuÃ¡rio especÃ­fico", callback_data="bc|mode_single")],
-            [InlineKeyboardButton("ðŸ”™ Voltar", callback_data="bc|menu")],
+            [InlineKeyboardButton("\U0001f30d Todos", callback_data="bc|mode_all")],
+            [InlineKeyboardButton("\U0001f464 Usu\u00e1rio espec\u00edfico", callback_data="bc|mode_single")],
+            [InlineKeyboardButton("\U0001f519 Voltar", callback_data="bc|menu")],
         ]
     )
-
 
 def _prompt_keyboard(remove_callback: str | None = None) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if remove_callback:
         labels = {
-            "bc|remove_media": "ðŸ—‘ Remover mÃ­dia",
-            "bc|remove_text": "ðŸ—‘ Remover texto",
-            "bc|remove_buttons": "ðŸ—‘ Remover botÃµes",
-            "bc|remove_schedule": "ðŸ—‘ Remover agendamento",
+            "bc|remove_media": "\U0001f5d1 Remover m\u00eddia",
+            "bc|remove_text": "\U0001f5d1 Remover texto",
+            "bc|remove_buttons": "\U0001f5d1 Remover bot\u00f5es",
+            "bc|remove_schedule": "\U0001f5d1 Remover agendamento",
         }
-        rows.append([InlineKeyboardButton(labels.get(remove_callback, "ðŸ—‘ Remover"), callback_data=remove_callback)])
-    rows.append([InlineKeyboardButton("ðŸ”™ Voltar", callback_data="bc|menu")])
+        rows.append([InlineKeyboardButton(labels.get(remove_callback, "\U0001f5d1 Remover"), callback_data=remove_callback)])
+    rows.append([InlineKeyboardButton("\U0001f519 Voltar", callback_data="bc|menu")])
     return InlineKeyboardMarkup(rows)
-
 
 def _templates_keyboard(templates: list[dict[str, object]]) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
@@ -465,6 +430,24 @@ def _message_keyboard(context: ContextTypes.DEFAULT_TYPE, data: dict[str, object
     return InlineKeyboardMarkup(rows) if rows else None
 
 
+
+def _buttons_summary(data: dict[str, object]) -> str:
+    rows = _button_rows_data(data)
+    if not rows:
+        return "Nenhum bot\u00e3o configurado."
+    lines: list[str] = []
+    for row in rows:
+        parts = []
+        for button in row:
+            kind = "popup" if button.get("type") == "alert" else "link"
+            parts.append(f"{_escape(button.get('text'))} ({kind})")
+        lines.append(" && ".join(parts))
+    return "\n".join(lines)
+
+
+def _view_text(title: str, body: str) -> str:
+    return f"{title}\n\n<blockquote>{body}</blockquote>"
+
 def _preview_text(data: dict[str, object]) -> str:
     text = str(data.get("text") or "").strip()
     lines = [
@@ -485,26 +468,22 @@ def _preview_text(data: dict[str, object]) -> str:
     return "\n".join(lines) + "\n\n" + (text or "<i>Sem texto.</i>")
 
 
-def _preview_keyboard(data: dict[str, object]) -> InlineKeyboardMarkup:
+def _preview_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("ðŸ§ª Enviar teste", callback_data="bc|test_send")],
-            [InlineKeyboardButton("ðŸš€ Confirmar envio", callback_data="bc|send")],
-            [InlineKeyboardButton("ðŸ”™ Voltar", callback_data="bc|menu")],
+            [InlineKeyboardButton("\U0001f9ea Enviar teste", callback_data="bc|test_send")],
+            [InlineKeyboardButton("Pr\u00f3ximo \u27a1\ufe0f", callback_data="bc|next")],
+            [InlineKeyboardButton("\U0001f519 Voltar", callback_data="bc|menu")],
         ]
     )
-
 
 def _confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [
-                InlineKeyboardButton("âŒ NÃƒO", callback_data="bc|menu"),
-                InlineKeyboardButton("âœ… SIM", callback_data="bc|confirm_send"),
-            ]
+            [InlineKeyboardButton("\u274c Cancelar", callback_data="bc|menu"), InlineKeyboardButton("\u2705 Confirmar", callback_data="bc|confirm_send")],
+            [InlineKeyboardButton("\U0001f5d3 Agendar", callback_data="bc|schedule")],
         ]
     )
-
 
 async def _send_panel_text(
     context: ContextTypes.DEFAULT_TYPE,
@@ -745,22 +724,20 @@ async def _safe_send_one(bot, context: ContextTypes.DEFAULT_TYPE, user_id: int, 
 
 async def _send_test(context: ContextTypes.DEFAULT_TYPE, admin_id: int, data: dict[str, object]) -> tuple[bool, str]:
     if not _content_ready(data):
-        return False, "Defina uma mensagem ou mÃ­dia antes do teste."
+        return False, "Defina uma mensagem ou m\u00eddia antes do teste."
     ok, _ = await _safe_send_one(context.bot, context, admin_id, data, False)
-    return ok, "Teste enviado para vocÃª." if ok else "NÃ£o consegui enviar o teste."
-
+    return ok, "Teste enviado para voc\u00ea." if ok else "N\u00e3o consegui enviar o teste."
 
 def _progress_text(counters: dict[str, Any], total: int, *, paused: bool = False, cancelled: bool = False) -> str:
     remaining = max(0, total - int(counters["processed"]))
-    title = "â¸ <b>TransmissÃ£o pausada</b>" if paused else "ðŸ›‘ <b>Cancelando transmissÃ£o...</b>" if cancelled else "ðŸš€ <b>TransmissÃ£o em andamento...</b>"
+    title = "\u23f8 <b>Transmiss\u00e3o pausada</b>" if paused else "\U0001f6d1 <b>Cancelando transmiss\u00e3o...</b>" if cancelled else "\U0001f680 <b>Transmiss\u00e3o em andamento...</b>"
     return (
         f"{title}\n\n"
-        f"âœ… <b>Enviadas:</b> <code>{int(counters['sent'])}</code>\n"
-        f"âŒ <b>Falhas:</b> <code>{int(counters['failed'])}</code>\n"
-        f"ðŸ“¦ <b>Processadas:</b> <code>{int(counters['processed'])}/{total}</code>\n"
-        f"â³ <b>Restantes:</b> <code>{remaining}</code>"
+        f"\u2705 <b>Enviadas:</b> <code>{int(counters['sent'])}</code>\n"
+        f"\u274c <b>Falhas:</b> <code>{int(counters['failed'])}</code>\n"
+        f"\U0001f4e6 <b>Processadas:</b> <code>{int(counters['processed'])}/{total}</code>\n"
+        f"\u23f3 <b>Restantes:</b> <code>{remaining}</code>"
     )
-
 
 async def _update_status_message(context: ContextTypes.DEFAULT_TYPE, status_msg: Message, counters: dict[str, Any], total: int) -> None:
     control = _broadcast_control(context)
@@ -1111,7 +1088,7 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
             _set_state(context, "")
             await _render_panel_text(
                 context,
-                "ðŸŽ¯ <b>Escolha o destino</b>\n\n<i>Toque em uma das opÃ§Ãµes abaixo.</i>",
+                "\U0001f3af <b>Escolha o destino</b>\n\n<i>Toque em uma das op\u00e7\u00f5es abaixo.</i>",
                 _mode_keyboard(),
                 query_message=query.message,
             )
@@ -1128,7 +1105,7 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
             _set_state(context, "awaiting_target_user_id")
             await _show_prompt(
                 context,
-                "ðŸ‘¤ <b>Envie o ID do usuÃ¡rio</b>\n\n<i>O prÃ³ximo texto enviado serÃ¡ usado como destino da transmissÃ£o.</i>",
+                "\U0001f464 <b>Envie o ID do usu\u00e1rio</b>\n\n<i>O pr\u00f3ximo texto enviado ser\u00e1 usado como destino da transmiss\u00e3o.</i>",
                 query_message=query.message,
             )
             return
@@ -1137,8 +1114,8 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
             _set_state(context, "awaiting_media")
             await _show_prompt(
                 context,
-                "ðŸ–¼ <b>Envie a mÃ­dia da publicaÃ§Ã£o!</b>\n"
-                "<i>Tipos permitidos: fotos, vÃ­deos, arquivos, figurinhas, GIFs, Ã¡udio, mensagens de voz e vÃ­deos redondos.</i>",
+                "\U0001f5bc\ufe0f <b>Envie a m\u00eddia da publica\u00e7\u00e3o!</b>\n"
+                "<i>Tipos permitidos: fotos, v\u00eddeos, arquivos, figurinhas, GIFs, \u00e1udio, mensagens de voz e v\u00eddeos redondos.</i>",
                 query_message=query.message,
                 remove_callback="bc|remove_media",
             )
@@ -1148,10 +1125,10 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
             _set_state(context, "awaiting_text")
             await _show_prompt(
                 context,
-                "ðŸ“ <b>Envie a mensagem da postagem</b>\n"
-                "<i>VocÃª pode usar negrito, itÃ¡lico e links feitos pelo prÃ³prio Telegram. HTML simples tambÃ©m funciona.</i>\n\n"
-                "â€¢ <b>Nome:</b> <code>%firstname%</code>\n"
-                "â€¢ <b>UsuÃ¡rio:</b> <code>%username%</code>",
+                "\U0001f520 <b>Envie a mensagem da postagem</b>\n"
+                "<i>Voc\u00ea pode usar negrito, it\u00e1lico e links feitos pelo pr\u00f3prio Telegram. HTML simples tamb\u00e9m funciona.</i>\n\n"
+                "\u2022 <b>Nome:</b> <code>%firstname%</code>\n"
+                "\u2022 <b>Usu\u00e1rio:</b> <code>%username%</code>",
                 query_message=query.message,
                 remove_callback="bc|remove_text",
             )
@@ -1161,13 +1138,13 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
             _set_state(context, "awaiting_buttons")
             await _show_prompt(
                 context,
-                "ðŸ”˜ <b>Defina os botÃµes da postagem</b>\n\n"
+                "\u2328\ufe0f <b>Defina os bot\u00f5es da postagem</b>\n\n"
                 "Envie uma mensagem assim:\n\n"
-                "<blockquote>Texto do botÃ£o - https://t.me/Exemplo\n"
-                "Outro botÃ£o - https://site.com</blockquote>\n\n"
-                "Para vÃ¡rios botÃµes na mesma linha:\n"
+                "<blockquote>Texto do bot\u00e3o - https://t.me/Exemplo\n"
+                "Outro bot\u00e3o - https://site.com</blockquote>\n\n"
+                "Para v\u00e1rios bot\u00f5es na mesma linha:\n"
                 "<blockquote>Site - https://site.com && Canal - https://t.me/canal</blockquote>\n\n"
-                "TambÃ©m aceita:\n"
+                "Tamb\u00e9m aceita:\n"
                 "<blockquote>Aviso - popup:Texto do popup\n"
                 "Compartilhar - share:Texto para compartilhar</blockquote>",
                 query_message=query.message,
@@ -1179,10 +1156,10 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
             _set_state(context, "awaiting_schedule")
             await _show_prompt(
                 context,
-                "ðŸ—“ <b>Agendar transmissÃ£o</b>\n\n"
-                "<i>Envie o horÃ¡rio desejado.</i>\n\n"
+                "\U0001f5d3 <b>Agendar transmiss\u00e3o</b>\n\n"
+                "<i>Envie o hor\u00e1rio desejado.</i>\n\n"
                 "Exemplos:\n"
-                "<blockquote>20:00\nhoje 20:00\namanhÃ£ 12:00\n25/12/2026 08:30</blockquote>",
+                "<blockquote>20:00\nhoje 20:00\namanh\u00e3 12:00\n25/12/2026 08:30</blockquote>",
                 query_message=query.message,
                 remove_callback="bc|remove_schedule",
             )
@@ -1255,8 +1232,23 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
             await _show_main_menu(context, query_message=query.message, note=note)
             return
 
-        if action == "preview":
-            await _show_preview(context, query_message=query.message)
+        if action == "view_media":
+            body = "M\u00eddia configurada." if bool(data.get("has_media")) else "Nenhuma m\u00eddia configurada."
+            await _render_panel_text(context, _view_text("\U0001f5bc\ufe0f <b>M\u00eddia</b>", body), _prompt_keyboard(), query_message=query.message)
+            return
+
+        if action == "view_text":
+            body = str(data.get("text") or "").strip() or "Nenhum texto configurado."
+            await _render_panel_text(context, _view_text("\U0001f520 <b>Texto</b>", body), _prompt_keyboard(), query_message=query.message)
+            return
+
+        if action == "view_buttons":
+            await _render_panel_text(context, _view_text("\u2328\ufe0f <b>Bot\u00f5es</b>", _buttons_summary(data)), _prompt_keyboard(), query_message=query.message)
+            return
+
+        if action == "preview" or action == "full_preview":
+            ok, note = await _send_test(context, int(user.id), data)
+            await _show_main_menu(context, query_message=query.message, note=note)
             return
 
         if action == "test_send":
@@ -1264,14 +1256,20 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
             await _show_main_menu(context, query_message=query.message, note=note)
             return
 
-        if action == "send":
+        if action == "send" or action == "next":
             total = 1 if data.get("mode") == "single" else get_total_users()
+            if not _content_ready(data):
+                await query.answer("Defina texto ou m\u00eddia antes de continuar.", show_alert=True)
+                return
+            await _send_test(context, int(user.id), data)
             await _render_panel_text(
                 context,
-                "ðŸ“¬ <b>TransmissÃ£o</b>\n\n"
-                f"VocÃª tem certeza que quer enviar para <code>{total}</code> usuÃ¡rio(s)?\n\n"
-                f"<blockquote>MÃ­dia: <b>{_yes_no(bool(data.get('has_media')))}</b>\n"
-                f"BotÃµes: <b>{_button_count(data)}</b>\n"
+                "\U0001f4ec <b>Confirma\u00e7\u00e3o</b>\n\n"
+                "A mensagem acima foi enviada para voc\u00ea como pr\u00e9via. Confirme, cancele ou agende o envio.\n\n"
+                f"<blockquote>Destino: <b>{_escape(_mode_label(data.get('mode')))}</b>\n"
+                f"Usu\u00e1rios: <b>{total}</b>\n"
+                f"M\u00eddia: <b>{_yes_no(bool(data.get('has_media')))}</b>\n"
+                f"Bot\u00f5es: <b>{_button_count(data)}</b>\n"
                 f"Fixar: <b>{_yes_no(bool(data.get('pin')))}</b>\n"
                 f"Agendado: <b>{_escape(_schedule_label(data))}</b></blockquote>",
                 _confirm_keyboard(),
