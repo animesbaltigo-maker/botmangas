@@ -22,7 +22,7 @@
     "es": "🇪🇸 Español"
   },
   "start": {
-    "welcome": "📚 <b>{brand}</b>\\n\\n<blockquote><b>Bem-vindo:</b> <i>{name}</i>\\n<b>Catálogo:</b> <i>Mangás, manhwas e manhuas</i>\\n<b>Recursos:</b> <i>Favoritos, histórico e leitura off-line</i></blockquote>\\n\\n✨ <i>Escolha abaixo como quer continuar ou digite o nome de uma obra.</i>",
+    "welcome": "📚 <b>{brand}</b>\n\n<blockquote><b>Bem-vindo:</b> <i>{name}</i>\n<b>Catálogo:</b> <i>Mangás, manhwas e manhuas</i>\n<b>Recursos:</b> <i>Favoritos, histórico e leitura off-line</i></blockquote>\n\n✨ <i>Escolha abaixo como quer continuar ou digite o nome de uma obra.</i>",
     "loading_title": "⏳ <b>Abrindo obra...</b>\n\nEstou carregando os detalhes e capítulos.",
     "loading_chapter": "⏳ <b>Abrindo capítulo...</b>\n\nPreparando a leitura.",
     "timeout": "⚠️ Essa solicitação demorou demais. Tente novamente em alguns segundos.",
