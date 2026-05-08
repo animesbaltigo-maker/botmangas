@@ -22,16 +22,16 @@
     "es": "🇪🇸 Español"
   },
   "start": {
-    "welcome": "📚 <b>{brand}</b>\\n\\n<blockquote><b>Welcome:</b> <i>{name}</i>\\n<b>Catalog:</b> <i>Manga, manhwa and manhua</i>\\n<b>Features:</b> <i>Favorites, history and offline reading</i></blockquote>\\n\\n✨ <i>Choose below how you want to continue or type a title.</i>",
-    "loading_title": "⏳ <b>Opening title...</b>\n\nLoading details and chapters.",
-    "loading_chapter": "⏳ <b>Opening chapter...</b>\n\nPreparing the reader.",
-    "timeout": "⚠️ This request took too long. Please try again in a few seconds.",
-    "duplicate": "⏳ This request is already being processed.",
-    "cooldown": "⏳ Wait a moment before repeating this action.",
-    "ref_ok": "✅ Referral registered. Keep using the bot so it can be reviewed.",
-    "ref_self": "This is your own referral link, so it does not count.",
-    "ref_already_same": "✅ This referral was already connected to the same link.",
-    "ref_exists": "You already joined through another referral."
+    "welcome": "🎬 <b>Bienvenido a {brand}, {name}!</b>\n\nEncuentra manga, manhwa y manhua dentro de Telegram, con lectura rápida, historial, favoritos y modo offline.\n\n<blockquote>• 🔎 Busca por nombre\n• 📖 Abre capítulos en pocos toques\n• ⭐ Guarda favoritos y continúa después</blockquote>\n\n<i>Escribe el nombre de una obra o usa /buscar.</i>",
+    "loading_title": "⏳ <b>Abriendo obra...</b>\n\nCargando detalles y capítulos.",
+    "loading_chapter": "⏳ <b>Abriendo capítulo...</b>\n\nPreparando la lectura.",
+    "timeout": "⚠️ Esta solicitud tardó demasiado. Inténtalo otra vez en unos segundos.",
+    "duplicate": "⏳ Esta solicitud ya se está procesando.",
+    "cooldown": "⏳ Espera un momento antes de repetir esta acción.",
+    "ref_ok": "✅ Invitación registrada. Sigue usando el bot para que entre en revisión.",
+    "ref_self": "Este es tu propio enlace de invitación, así que no cuenta.",
+    "ref_already_same": "✅ Esta invitación ya estaba conectada al mismo enlace.",
+    "ref_exists": "Ya entraste usando otra invitación."
   },
   "search": {
     "how_to": "🔎 <b>How to search</b>\n\nSend <code>/buscar manga title</code> or simply type the title in private chat.\n\nExample: <code>Solo Leveling</code>",
