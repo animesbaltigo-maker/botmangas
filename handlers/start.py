@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppI
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import ContextTypes
 
-from config import BOT_BRAND, BOT_USERNAME, WEBAPP_BASE_URL
+from config import BALTIGO_UNIVERSE_WEBAPP_URL, BOT_BRAND, BOT_USERNAME, WEBAPP_BASE_URL
 from core.background import fire_and_forget_sync, run_sync
 from handlers.callbacks import send_chapter_panel, send_chapters_page, send_title_panel
 from services.catalog_client import get_cached_home_snapshot, schedule_warm_catalog_cache
@@ -24,7 +24,7 @@ from utils.gatekeeper import ensure_channel_membership
 START_COOLDOWN = 1.0
 START_DEEP_LINK_TTL = 8.0
 START_OPEN_TIMEOUT = 28.0
-START_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBa6lQWGn6EHujoRoTvxvh_-eBzTvgZcGwAAIRDWsbcMLQR5G16fTFC8WvAQADAgADeQADOwQ/photo.jpg"
+START_BANNER_URL = "https://photo.chelpbot.me/AgACAgEAAxkBa-uhxmn-Ynl49i4sc-QGdecUy6MivtqbAAJlDGsbr6GIR8U7RAEQqdGuAQADAgADeQADOwQ/photo.jpg"
 
 _START_USER_LOCKS: dict[int, asyncio.Lock] = {}
 _START_INFLIGHT: dict[str, float] = {}
@@ -195,6 +195,10 @@ def build_welcome_panel(user_id: int, first_name: str) -> tuple[str, InlineKeybo
                 [[InlineKeyboardButton(f"📘 {item.get('title') or 'Mangá'}", web_app=WebAppInfo(url=url))]]
             )
 
+    keyboard_rows.append(
+        [InlineKeyboardButton("⚔️ Universo Baltigo", web_app=WebAppInfo(url=BALTIGO_UNIVERSE_WEBAPP_URL))]
+    )
+
     text = t_user(
         user_id,
         "start.welcome",
@@ -233,6 +237,10 @@ async def _send_welcome(message, user_id: int, first_name: str) -> None:
                 )
             ]
         )
+
+    keyboard_rows.append(
+        [InlineKeyboardButton("⚔️ Universo Baltigo", web_app=WebAppInfo(url=BALTIGO_UNIVERSE_WEBAPP_URL))]
+    )
 
     text = t_user(
         user_id,

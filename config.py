@@ -190,7 +190,11 @@ TELEGRAPH_AUTHOR = os.getenv("TELEGRAPH_AUTHOR", BOT_BRAND).strip() or BOT_BRAND
 STICKER_DIVISOR = os.getenv("STICKER_DIVISOR", "").strip()
 PROMO_BANNER_URL = os.getenv(
     "PROMO_BANNER_URL",
-    "https://photo.chelpbot.me/AgACAgEAAxkBZ7DGAAFpse3x62wh4yTxu0BIhIPz12L_YwACMAxrGxpikUXp6-kJkxw_1QEAAwIAA3kAAzoE/photo.jpg",
+    "https://photo.chelpbot.me/AgACAgEAAxkBa-uhxmn-Ynl49i4sc-QGdecUy6MivtqbAAJlDGsbr6GIR8U7RAEQqdGuAQADAgADeQADOwQ/photo.jpg",
+).strip()
+BALTIGO_UNIVERSE_WEBAPP_URL = os.getenv(
+    "BALTIGO_UNIVERSE_WEBAPP_URL",
+    "https://rough-double-remarkable-north.trycloudflare.com/miniapp/bots/index.html",
 ).strip()
 DISTRIBUTION_TAG = os.getenv("DISTRIBUTION_TAG", "@MangasBrasil").strip() or "@MangasBrasil"
 
