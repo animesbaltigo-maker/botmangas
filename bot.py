@@ -25,6 +25,7 @@ from handlers.broadcast import (
     broadcast_callbacks,
     broadcast_command,
     broadcast_message_router,
+    broadcast_public_callbacks,
 )
 from handlers.callbacks import callbacks
 from handlers.help import ajuda
@@ -268,6 +269,7 @@ def main() -> None:
     app.add_handler(CommandHandler("posttodosmangas", postallmangas))
 
     app.add_handler(CallbackQueryHandler(broadcast_callbacks, pattern=r"^bc\|"))
+    app.add_handler(CallbackQueryHandler(broadcast_public_callbacks, pattern=r"^bc_public\|"))
     app.add_handler(CallbackQueryHandler(referral_button, pattern=r"^noop_indicar$"))
     app.add_handler(CallbackQueryHandler(callbacks, pattern=r"^mb\|"))
 
