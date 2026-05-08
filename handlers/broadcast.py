@@ -1,15 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import html
+import logging
 import time
-from typing import Optional
+from typing import Any
 
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InputMediaPhoto,
-    Message,
-    Update,
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message, Update
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter, TimedOut
 from telegram.ext import ContextTypes
@@ -18,10 +15,13 @@ from config import ADMIN_IDS
 from services.user_registry import get_all_users, get_total_users, remove_user
 
 
+LOGGER = logging.getLogger(__name__)
+
 BROADCAST_STATE_KEY = "broadcast_state"
 BROADCAST_DATA_KEY = "broadcast_data"
 BROADCAST_LOCK_KEY = "broadcast_lock"
 BROADCAST_LAST_KEY = "broadcast_last_action"
+BROADCAST_PANEL_KEY = "broadcast_panel"
 
 BROADCAST_COOLDOWN = 1.0
 
@@ -39,48 +39,84 @@ def _is_admin(user_id: int | None) -> bool:
     return user_id is not None and user_id in ADMIN_IDS
 
 
-def _escape(text: str) -> str:
-    return html.escape(text or "")
+def _escape(value: object) -> str:
+    return html.escape(str(value or ""))
 
 
-def _reset_broadcast(context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop(BROADCAST_STATE_KEY, None)
-    context.user_data.pop(BROADCAST_DATA_KEY, None)
-    context.user_data.pop(BROADCAST_LOCK_KEY, None)
-    context.user_data.pop(BROADCAST_LAST_KEY, None)
+def _yes_no(value: bool) -> str:
+    return "Sim" if value else "Nao"
 
 
-def _set_state(context: ContextTypes.DEFAULT_TYPE, state: str):
-    context.user_data[BROADCAST_STATE_KEY] = state
+def _blank_data() -> dict[str, object]:
+    return {
+        "mode": None,
+        "target_user_id": None,
+        "text": "",
+        "photo": None,
+        "button_text": "",
+        "button_url": "",
+        "draft_button_text": "",
+        "pin": False,
+    }
 
 
-def _get_state(context: ContextTypes.DEFAULT_TYPE) -> str:
-    return context.user_data.get(BROADCAST_STATE_KEY, "")
-
-
-def _get_data(context: ContextTypes.DEFAULT_TYPE) -> dict:
+def _panel_data(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
     data = context.user_data.get(BROADCAST_DATA_KEY)
     if not isinstance(data, dict):
-        data = {
-            "mode": None,
-            "target_user_id": None,
-            "text": "",
-            "photo": None,
-            "button_text": "",
-            "button_url": "",
-            "pin": False,
-        }
+        data = _blank_data()
         context.user_data[BROADCAST_DATA_KEY] = data
     return data
 
 
-async def _guard_action(context: ContextTypes.DEFAULT_TYPE):
-    now = time.monotonic()
+def _set_state(context: ContextTypes.DEFAULT_TYPE, state: str) -> None:
+    context.user_data[BROADCAST_STATE_KEY] = state
 
+
+def _get_state(context: ContextTypes.DEFAULT_TYPE) -> str:
+    return str(context.user_data.get(BROADCAST_STATE_KEY, "") or "")
+
+
+def _clear_transient_fields(data: dict[str, object]) -> None:
+    data["draft_button_text"] = ""
+
+
+def _reset_broadcast(context: ContextTypes.DEFAULT_TYPE, *, keep_panel: bool = False) -> None:
+    context.user_data.pop(BROADCAST_STATE_KEY, None)
+    context.user_data.pop(BROADCAST_DATA_KEY, None)
+    context.user_data.pop(BROADCAST_LOCK_KEY, None)
+    context.user_data.pop(BROADCAST_LAST_KEY, None)
+    if not keep_panel:
+        context.user_data.pop(BROADCAST_PANEL_KEY, None)
+
+
+def _remember_panel_message(context: ContextTypes.DEFAULT_TYPE, message: Message, *, kind: str) -> None:
+    context.user_data[BROADCAST_PANEL_KEY] = {
+        "chat_id": int(message.chat_id),
+        "message_id": int(message.message_id),
+        "kind": kind,
+    }
+
+
+def _panel_ref(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object] | None:
+    ref = context.user_data.get(BROADCAST_PANEL_KEY)
+    return ref if isinstance(ref, dict) else None
+
+
+async def _delete_message_safely(message: Message | None) -> None:
+    if not message:
+        return
+    try:
+        await message.delete()
+    except Exception:
+        LOGGER.debug("Nao foi possivel apagar mensagem do broadcast", exc_info=True)
+
+
+async def _guard_action(context: ContextTypes.DEFAULT_TYPE) -> str:
+    now = time.monotonic()
     if context.user_data.get(BROADCAST_LOCK_KEY):
         return "locked"
 
-    last = context.user_data.get(BROADCAST_LAST_KEY, 0.0)
+    last = float(context.user_data.get(BROADCAST_LAST_KEY, 0.0) or 0.0)
     if now - last < BROADCAST_COOLDOWN:
         return "cooldown"
 
@@ -89,7 +125,7 @@ async def _guard_action(context: ContextTypes.DEFAULT_TYPE):
     return "ok"
 
 
-def _release_guard(context: ContextTypes.DEFAULT_TYPE):
+def _release_guard(context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data.pop(BROADCAST_LOCK_KEY, None)
 
 
@@ -97,215 +133,327 @@ def _broadcast_is_running(context: ContextTypes.DEFAULT_TYPE) -> bool:
     return bool(context.application.bot_data.get(GLOBAL_BROADCAST_RUNNING_KEY, False))
 
 
-def _set_broadcast_running(context: ContextTypes.DEFAULT_TYPE, value: bool):
+def _set_broadcast_running(context: ContextTypes.DEFAULT_TYPE, value: bool) -> None:
     context.application.bot_data[GLOBAL_BROADCAST_RUNNING_KEY] = value
 
 
-def _set_broadcast_task(context: ContextTypes.DEFAULT_TYPE, task):
+def _set_broadcast_task(context: ContextTypes.DEFAULT_TYPE, task: asyncio.Task[object] | None) -> None:
+    if task is None:
+        context.application.bot_data.pop(GLOBAL_BROADCAST_TASK_KEY, None)
+        return
     context.application.bot_data[GLOBAL_BROADCAST_TASK_KEY] = task
 
 
-def _main_menu_text(data: dict, running: bool = False) -> str:
-    mode = data.get("mode")
+def _mode_label(mode: str | None) -> str:
+    if mode == "all":
+        return "Todos os usuarios"
+    if mode == "single":
+        return "Usuario especifico"
+    return "Nao definido"
+
+
+def _format_line(label: str, value: str) -> str:
+    return f"<b>{_escape(label)}:</b> {value}"
+
+
+def _main_menu_text(data: dict[str, object], *, running: bool, note: str | None = None) -> str:
+    mode = str(data.get("mode") or "")
     target_user_id = data.get("target_user_id")
     photo = data.get("photo")
-    text = data.get("text") or ""
-    button_text = data.get("button_text") or ""
-    button_url = data.get("button_url") or ""
-    pin = data.get("pin", False)
+    text = str(data.get("text") or "")
+    button_ready = bool(str(data.get("button_text") or "").strip() and str(data.get("button_url") or "").strip())
+    pin = bool(data.get("pin"))
+
+    lines = [
+        "📢 <b>Painel de transmissao</b>",
+        "",
+        "🟢 <b>Status do sistema:</b> <code>Broadcast em andamento</code>"
+        if running
+        else "⚪️ <b>Status do sistema:</b> <code>Parado</code>",
+        "",
+        "Configure e envie uma mensagem para os usuarios do bot.",
+        "",
+    ]
+    if note:
+        lines.extend([f"<blockquote>{note}</blockquote>", ""])
+
+    details = [
+        _format_line("Destino", f"<code>{_escape(_mode_label(mode))}</code>"),
+    ]
+    if mode == "single" and target_user_id:
+        details.append(_format_line("ID alvo", f"<code>{_escape(target_user_id)}</code>"))
+    details.extend(
+        [
+            _format_line("Midia", f"<code>{_yes_no(bool(photo))}</code>"),
+            _format_line("Texto", f"<code>{_yes_no(bool(text.strip()))}</code>"),
+            _format_line("Botao", f"<code>{_yes_no(button_ready)}</code>"),
+            _format_line("Pin", f"<code>{_yes_no(pin)}</code>"),
+            _format_line("Total salvo no bot", f"<code>{get_total_users()}</code>"),
+        ]
+    )
+    lines.append("<blockquote>" + "\n".join(details) + "</blockquote>")
+    lines.extend(["", "Escolha uma opcao abaixo."])
+    return "\n".join(lines)
+
+
+def _main_menu_keyboard(data: dict[str, object], *, running: bool) -> InlineKeyboardMarkup:
+    mode = str(data.get("mode") or "")
+    pin = bool(data.get("pin"))
 
     if mode == "all":
-        mode_label = "Todos os usuários"
+        mode_label = "🌍 Todos"
     elif mode == "single":
-        mode_label = "Usuário específico"
+        mode_label = "👤 Usuario"
     else:
-        mode_label = "Não definido"
+        mode_label = "🎯 Destino"
 
-    target_block = ""
-    if mode == "single" and target_user_id:
-        target_block = f"\n👤 <b>ID alvo:</b> <code>{target_user_id}</code>"
-
-    status_block = (
-        "🟢 <b>Status do sistema:</b> <code>Broadcast em andamento</code>\n\n"
-        if running
-        else "⚪️ <b>Status do sistema:</b> <code>Parado</code>\n\n"
-    )
-
-    return (
-        f"📢 <b>Transmissão</b>\n\n"
-        f"{status_block}"
-        f"Configure e envie uma mensagem para o bot.\n\n"
-        f"🎯 <b>Destino:</b> <code>{_escape(mode_label)}</code>"
-        f"{target_block}\n"
-        f"🖼 <b>Mídia:</b> <code>{'Sim' if photo else 'Não'}</code>\n"
-        f"📝 <b>Texto:</b> <code>{'Sim' if text.strip() else 'Não'}</code>\n"
-        f"🔘 <b>Botão:</b> <code>{'Sim' if button_text.strip() and button_url.strip() else 'Não'}</code>\n"
-        f"📌 <b>Pin:</b> <code>{'Sim' if pin else 'Não'}</code>\n\n"
-        f"👥 <b>Total salvo no bot:</b> <code>{get_total_users()}</code>\n\n"
-        "Escolha uma opção abaixo."
-    )
-
-
-def _main_menu_keyboard(data: dict, running: bool = False):
-    mode = data.get("mode")
-    pin = data.get("pin", False)
-
-    mode_label = "🌍 Todos" if mode == "all" else "👤 Usuário"
-    pin_label = "📌 SIM" if pin else "❌ NÃO"
+    pin_label = f"📌 {_yes_no(pin)}"
     send_label = "⏳ Rodando" if running else "🚀 Enviar"
 
-    rows = [
+    return InlineKeyboardMarkup(
         [
-            InlineKeyboardButton(mode_label, callback_data="bc|set_mode"),
-            InlineKeyboardButton("🖼 Mídia", callback_data="bc|set_media"),
-        ],
-        [
-            InlineKeyboardButton("📝 Texto", callback_data="bc|set_text"),
-            InlineKeyboardButton("🔘 Botão", callback_data="bc|set_button"),
-        ],
-        [
-            InlineKeyboardButton(pin_label, callback_data="bc|toggle_pin"),
-            InlineKeyboardButton("👀 Ver", callback_data="bc|preview"),
-        ],
-        [
-            InlineKeyboardButton(send_label, callback_data="bc|send"),
-            InlineKeyboardButton("🗑 Limpar", callback_data="bc|reset"),
-        ],
-        [
-            InlineKeyboardButton("❌ Fechar", callback_data="bc|close"),
-        ],
-    ]
+            [
+                InlineKeyboardButton(mode_label, callback_data="bc|set_mode"),
+                InlineKeyboardButton("🖼 Midia", callback_data="bc|set_media"),
+            ],
+            [
+                InlineKeyboardButton("📝 Texto", callback_data="bc|set_text"),
+                InlineKeyboardButton("🔘 Botao", callback_data="bc|set_button"),
+            ],
+            [
+                InlineKeyboardButton(pin_label, callback_data="bc|toggle_pin"),
+                InlineKeyboardButton("👀 Ver", callback_data="bc|preview"),
+            ],
+            [
+                InlineKeyboardButton(send_label, callback_data="bc|send"),
+                InlineKeyboardButton("🗑 Limpar", callback_data="bc|reset"),
+            ],
+            [InlineKeyboardButton("❌ Fechar", callback_data="bc|close")],
+        ]
+    )
 
+
+def _mode_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("🌍 Todos", callback_data="bc|mode_all")],
+            [InlineKeyboardButton("👤 Usuario especifico", callback_data="bc|mode_single")],
+            [InlineKeyboardButton("🔙 Voltar", callback_data="bc|menu")],
+        ]
+    )
+
+
+def _prompt_keyboard(remove_callback: str | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if remove_callback:
+        labels = {
+            "bc|remove_media": "🗑 Remover midia",
+            "bc|remove_text": "🗑 Remover texto",
+            "bc|remove_button": "🗑 Remover botao",
+        }
+        rows.append([InlineKeyboardButton(labels.get(remove_callback, "🗑 Remover"), callback_data=remove_callback)])
+    rows.append([InlineKeyboardButton("🔙 Voltar", callback_data="bc|menu")])
     return InlineKeyboardMarkup(rows)
 
 
-def _build_message_keyboard(data: dict):
-    button_text = (data.get("button_text") or "").strip()
-    button_url = (data.get("button_url") or "").strip()
+def _message_keyboard(data: dict[str, object]) -> InlineKeyboardMarkup | None:
+    button_text = str(data.get("button_text") or "").strip()
+    button_url = str(data.get("button_url") or "").strip()
+    if not button_text or not button_url:
+        return None
+    return InlineKeyboardMarkup([[InlineKeyboardButton(button_text, url=button_url)]])
 
-    if button_text and button_url:
-        return InlineKeyboardMarkup(
-            [[InlineKeyboardButton(button_text, url=button_url)]]
+
+def _preview_text(data: dict[str, object]) -> str:
+    mode = str(data.get("mode") or "")
+    target_user_id = data.get("target_user_id")
+    text = str(data.get("text") or "").strip()
+    pin = bool(data.get("pin"))
+
+    lines = [
+        "👀 <b>Pre-visualizacao da transmissao</b>",
+        "",
+        _format_line("Destino", f"<code>{_escape(_mode_label(mode))}</code>"),
+    ]
+    if mode == "single" and target_user_id:
+        lines.append(_format_line("ID alvo", f"<code>{_escape(target_user_id)}</code>"))
+    lines.append(_format_line("Pin", f"<code>{_yes_no(pin)}</code>"))
+    return "\n".join(lines) + "\n\n" + (text or "<i>Sem texto.</i>")
+
+
+def _preview_keyboard(data: dict[str, object]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    message_keyboard = _message_keyboard(data)
+    if message_keyboard:
+        rows.extend(message_keyboard.inline_keyboard)
+    rows.append([InlineKeyboardButton("🚀 Confirmar envio", callback_data="bc|send")])
+    rows.append([InlineKeyboardButton("🔙 Voltar", callback_data="bc|menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _send_panel_text(
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    chat_id: int,
+    reply_to_message_id: int | None,
+    text: str,
+    reply_markup,
+) -> Message:
+    sent = await context.bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup,
+        disable_web_page_preview=True,
+        reply_to_message_id=reply_to_message_id,
+    )
+    _remember_panel_message(context, sent, kind="text")
+    return sent
+
+
+async def _render_panel_text(
+    context: ContextTypes.DEFAULT_TYPE,
+    text: str,
+    reply_markup,
+    *,
+    query_message: Message | None = None,
+    source_message: Message | None = None,
+) -> Message | None:
+    if query_message:
+        if query_message.photo:
+            sent = await _send_panel_text(
+                context,
+                chat_id=int(query_message.chat_id),
+                reply_to_message_id=None,
+                text=text,
+                reply_markup=reply_markup,
+            )
+            await _delete_message_safely(query_message)
+            return sent
+        try:
+            await query_message.edit_text(
+                text=text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True,
+            )
+            _remember_panel_message(context, query_message, kind="text")
+            return query_message
+        except Exception:
+            LOGGER.debug("Falha ao editar painel via callback", exc_info=True)
+
+    panel = _panel_ref(context)
+    if panel:
+        try:
+            if str(panel.get("kind") or "text") == "photo":
+                sent = await _send_panel_text(
+                    context,
+                    chat_id=int(panel["chat_id"]),
+                    reply_to_message_id=None,
+                    text=text,
+                    reply_markup=reply_markup,
+                )
+                try:
+                    await context.bot.delete_message(chat_id=int(panel["chat_id"]), message_id=int(panel["message_id"]))
+                except Exception:
+                    LOGGER.debug("Falha ao apagar painel antigo com foto", exc_info=True)
+                return sent
+
+            await context.bot.edit_message_text(
+                chat_id=int(panel["chat_id"]),
+                message_id=int(panel["message_id"]),
+                text=text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True,
+            )
+            return None
+        except Exception:
+            LOGGER.debug("Falha ao editar painel salvo", exc_info=True)
+
+    if source_message:
+        return await _send_panel_text(
+            context,
+            chat_id=int(source_message.chat_id),
+            reply_to_message_id=None,
+            text=text,
+            reply_markup=reply_markup,
         )
     return None
 
 
-def _preview_caption(data: dict) -> str:
-    mode = data.get("mode")
-    target_user_id = data.get("target_user_id")
-    text = (data.get("text") or "").strip()
-    pin = data.get("pin", False)
+def _with_note(base_text: str, note: str | None = None) -> str:
+    if not note:
+        return base_text
+    return f"{base_text}\n\n<blockquote>{note}</blockquote>"
 
-    if mode == "all":
-        mode_label = "Todos os usuários"
-    elif mode == "single":
-        mode_label = "Usuário específico"
-    else:
-        mode_label = "Não definido"
 
-    preview_header = (
-        f"👀 <b>Pré-visualização da transmissão</b>\n\n"
-        f"🎯 <b>Destino:</b> <code>{_escape(mode_label)}</code>\n"
+async def _show_main_menu(
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    query_message: Message | None = None,
+    source_message: Message | None = None,
+    note: str | None = None,
+) -> Message | None:
+    data = _panel_data(context)
+    _set_state(context, "")
+    _clear_transient_fields(data)
+    return await _render_panel_text(
+        context,
+        _main_menu_text(data, running=_broadcast_is_running(context), note=note),
+        _main_menu_keyboard(data, running=_broadcast_is_running(context)),
+        query_message=query_message,
+        source_message=source_message,
     )
 
-    if mode == "single" and target_user_id:
-        preview_header += f"👤 <b>ID alvo:</b> <code>{target_user_id}</code>\n"
 
-    preview_header += f"📌 <b>Pin:</b> <code>{'Sim' if pin else 'Não'}</code>\n\n"
-
-    if text:
-        return preview_header + text
-
-    return preview_header + "<i>Sem texto.</i>"
-
-
-async def _send_preview(query, context: ContextTypes.DEFAULT_TYPE):
-    data = _get_data(context)
-
-    caption = _preview_caption(data)
-    keyboard = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("🚀 Confirmar envio", callback_data="bc|send")],
-            [InlineKeyboardButton("🔙 Voltar", callback_data="bc|menu")],
-        ]
+async def _show_prompt(
+    context: ContextTypes.DEFAULT_TYPE,
+    prompt_text: str,
+    *,
+    remove_callback: str | None = None,
+    query_message: Message | None = None,
+    source_message: Message | None = None,
+    note: str | None = None,
+) -> Message | None:
+    return await _render_panel_text(
+        context,
+        _with_note(prompt_text, note),
+        _prompt_keyboard(remove_callback),
+        query_message=query_message,
+        source_message=source_message,
     )
-    msg_keyboard = _build_message_keyboard(data)
 
-    if msg_keyboard:
-        keyboard.inline_keyboard.insert(0, msg_keyboard.inline_keyboard[0])
 
+async def _show_preview(context: ContextTypes.DEFAULT_TYPE, *, query_message: Message) -> None:
+    data = _panel_data(context)
+    caption = _preview_text(data)
+    keyboard = _preview_keyboard(data)
     photo = data.get("photo")
+
     if photo:
         try:
-            await query.edit_message_media(
-                media=InputMediaPhoto(
-                    media=photo,
-                    caption=caption,
-                    parse_mode=ParseMode.HTML,
-                ),
+            await query_message.edit_media(
+                media=InputMediaPhoto(media=str(photo), caption=caption, parse_mode=ParseMode.HTML),
                 reply_markup=keyboard,
             )
+            _remember_panel_message(context, query_message, kind="photo")
             return
         except Exception:
-            try:
-                await query.edit_message_caption(
-                    caption=caption,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=keyboard,
-                )
-                return
-            except Exception:
-                pass
+            LOGGER.debug("Falha ao editar preview com foto", exc_info=True)
 
-    try:
-        await query.edit_message_text(
-            text=caption,
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard,
-            disable_web_page_preview=True,
-        )
-    except Exception:
-        await query.message.reply_text(
-            text=caption,
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard,
-            disable_web_page_preview=True,
-        )
+    await _render_panel_text(context, caption, keyboard, query_message=query_message)
 
 
-async def _show_main_menu(query, context: ContextTypes.DEFAULT_TYPE):
-    data = _get_data(context)
-    text = _main_menu_text(data, running=_broadcast_is_running(context))
-    keyboard = _main_menu_keyboard(data, running=_broadcast_is_running(context))
-
-    try:
-        await query.edit_message_text(
-            text=text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard,
-            disable_web_page_preview=True,
-        )
-    except Exception:
-        try:
-            await query.message.reply_text(
-                text=text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=keyboard,
-                disable_web_page_preview=True,
-            )
-        except Exception:
-            pass
-
-
-async def _send_broadcast_message(bot, chat_id: int, data: dict) -> Optional[Message]:
-    text = (data.get("text") or "").strip()
+async def _send_broadcast_message(bot, chat_id: int, data: dict[str, object]) -> Message:
+    text = str(data.get("text") or "").strip()
     photo = data.get("photo")
-    reply_markup = _build_message_keyboard(data)
+    reply_markup = _message_keyboard(data)
 
     if photo:
         return await bot.send_photo(
             chat_id=chat_id,
-            photo=photo,
+            photo=str(photo),
             caption=text or None,
             parse_mode=ParseMode.HTML if text else None,
             reply_markup=reply_markup,
@@ -320,18 +468,13 @@ async def _send_broadcast_message(bot, chat_id: int, data: dict) -> Optional[Mes
     )
 
 
-async def _maybe_pin_message(bot, chat_id: int, message: Message | None, should_pin: bool):
+async def _maybe_pin_message(bot, chat_id: int, message: Message | None, should_pin: bool) -> None:
     if not should_pin or not message:
         return
-
     try:
-        await bot.pin_chat_message(
-            chat_id=chat_id,
-            message_id=message.message_id,
-            disable_notification=True,
-        )
+        await bot.pin_chat_message(chat_id=chat_id, message_id=message.message_id, disable_notification=True)
     except Exception:
-        pass
+        LOGGER.debug("Falha ao fixar mensagem do broadcast", exc_info=True)
 
 
 def _should_remove_user_on_error(exc: Exception) -> bool:
@@ -345,204 +488,168 @@ def _should_remove_user_on_error(exc: Exception) -> bool:
     )
 
 
-async def _safe_send_one(bot, user_id: int, data: dict, should_pin: bool) -> tuple[bool, bool]:
+async def _safe_send_one(bot, user_id: int, data: dict[str, object], should_pin: bool) -> tuple[bool, bool]:
     try:
-        msg = await _send_broadcast_message(bot, user_id, data)
-        await _maybe_pin_message(bot, user_id, msg, should_pin)
+        message = await _send_broadcast_message(bot, user_id, data)
+        await _maybe_pin_message(bot, user_id, message, should_pin)
         return True, False
-
-    except RetryAfter as e:
-        await asyncio.sleep(float(e.retry_after) + 1.0)
+    except RetryAfter as exc:
+        await asyncio.sleep(float(exc.retry_after) + 1.0)
         try:
-            msg = await _send_broadcast_message(bot, user_id, data)
-            await _maybe_pin_message(bot, user_id, msg, should_pin)
+            message = await _send_broadcast_message(bot, user_id, data)
+            await _maybe_pin_message(bot, user_id, message, should_pin)
             return True, False
-        except Exception as exc2:
-            return False, _should_remove_user_on_error(exc2)
-
+        except Exception as retry_exc:
+            return False, _should_remove_user_on_error(retry_exc)
     except (Forbidden, BadRequest) as exc:
         return False, _should_remove_user_on_error(exc)
-
     except (TimedOut, NetworkError):
         return False, False
-
     except Exception as exc:
         return False, _should_remove_user_on_error(exc)
 
 
-async def _update_status_message(status_msg: Message, sent: int, failed: int, processed: int, total: int):
+def _progress_text(counters: dict[str, Any], total: int) -> str:
+    return (
+        "🚀 <b>Transmissao em andamento...</b>\n\n"
+        f"✅ <b>Enviadas:</b> <code>{int(counters['sent'])}</code>\n"
+        f"❌ <b>Falhas:</b> <code>{int(counters['failed'])}</code>\n"
+        f"📦 <b>Processadas:</b> <code>{int(counters['processed'])}/{total}</code>"
+    )
+
+
+async def _update_status_message(status_msg: Message, counters: dict[str, Any], total: int) -> None:
     try:
-        await status_msg.edit_text(
-            f"🚀 Transmissão em andamento...\n\n"
-            f"✅ Enviadas: {sent}\n"
-            f"❌ Falhas: {failed}\n"
-            f"📦 Processadas: {processed}/{total}"
-        )
+        await status_msg.edit_text(_progress_text(counters, total), parse_mode=ParseMode.HTML)
     except Exception:
-        pass
+        LOGGER.debug("Falha ao atualizar status do broadcast", exc_info=True)
 
 
 async def _broadcast_worker(
-    queue: asyncio.Queue,
+    queue: asyncio.Queue[int | None],
+    *,
     bot,
-    data: dict,
+    data: dict[str, object],
     should_pin: bool,
-    counters: dict,
+    counters: dict[str, Any],
     status_msg: Message,
     total: int,
-):
+) -> None:
     while True:
         user_id = await queue.get()
+        try:
+            if user_id is None:
+                return
 
-        if user_id is None:
-            queue.task_done()
-            break
+            ok, should_remove = await _safe_send_one(bot, int(user_id), data, should_pin)
+            if ok:
+                counters["sent"] += 1
+            else:
+                counters["failed"] += 1
+                if should_remove:
+                    counters["remove_ids"].add(int(user_id))
 
-        ok, should_remove = await _safe_send_one(bot, int(user_id), data, should_pin)
-
-        if ok:
-            counters["sent"] += 1
-        else:
-            counters["failed"] += 1
-            if should_remove:
-                try:
-                    remove_user(user_id)
-                    counters["removed"] += 1
-                except Exception:
-                    pass
-
-        counters["processed"] += 1
-
-        now = time.monotonic()
-        if (
-            counters["processed"] % STATUS_EVERY == 0
-            or now - counters["last_status_at"] >= STATUS_MIN_INTERVAL
-        ):
-            counters["last_status_at"] = now
-            await _update_status_message(
-                status_msg=status_msg,
-                sent=counters["sent"],
-                failed=counters["failed"],
-                processed=counters["processed"],
-                total=total,
+            counters["processed"] += 1
+            now = time.monotonic()
+            should_update = (
+                counters["processed"] % STATUS_EVERY == 0
+                or now - float(counters["last_status_at"]) >= STATUS_MIN_INTERVAL
             )
+            if should_update:
+                async with counters["status_lock"]:
+                    now = time.monotonic()
+                    if (
+                        counters["processed"] % STATUS_EVERY == 0
+                        or now - float(counters["last_status_at"]) >= STATUS_MIN_INTERVAL
+                    ):
+                        counters["last_status_at"] = now
+                        await _update_status_message(status_msg, counters, total)
 
-        await asyncio.sleep(PER_MESSAGE_DELAY)
-        queue.task_done()
+            await asyncio.sleep(PER_MESSAGE_DELAY)
+        finally:
+            queue.task_done()
 
 
 async def _execute_broadcast_background(
-    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    application,
+    bot,
     admin_chat_id: int,
     reply_to_message_id: int | None,
-    data: dict,
-):
-    if _broadcast_is_running(context):
-        await context.bot.send_message(
-            chat_id=admin_chat_id,
-            text="⚠️ Já existe uma transmissão em andamento.",
-            reply_to_message_id=reply_to_message_id,
-        )
-        return
-
-    _set_broadcast_running(context, True)
-
+    data: dict[str, object],
+) -> None:
     try:
-        mode = data.get("mode")
-        text = (data.get("text") or "").strip()
+        mode = str(data.get("mode") or "")
+        text = str(data.get("text") or "").strip()
         photo = data.get("photo")
         target_user_id = data.get("target_user_id")
         requested_pin = bool(data.get("pin"))
 
         if mode not in {"all", "single"}:
-            await context.bot.send_message(
-                chat_id=admin_chat_id,
-                text="❌ Defina o destino primeiro.",
-                reply_to_message_id=reply_to_message_id,
-            )
+            await bot.send_message(chat_id=admin_chat_id, text="Defina o destino primeiro.", reply_to_message_id=reply_to_message_id)
             return
 
         if not text and not photo:
-            await context.bot.send_message(
-                chat_id=admin_chat_id,
-                text="❌ Defina pelo menos um texto ou uma imagem.",
-                reply_to_message_id=reply_to_message_id,
-            )
+            await bot.send_message(chat_id=admin_chat_id, text="Defina pelo menos um texto ou uma imagem.", reply_to_message_id=reply_to_message_id)
             return
 
         if mode == "single":
-            if not target_user_id:
-                await context.bot.send_message(
-                    chat_id=admin_chat_id,
-                    text="❌ Informe o ID do usuário.",
-                    reply_to_message_id=reply_to_message_id,
-                )
+            if not isinstance(target_user_id, int):
+                await bot.send_message(chat_id=admin_chat_id, text="Envie um ID numerico valido.", reply_to_message_id=reply_to_message_id)
                 return
 
-            ok, should_remove = await _safe_send_one(
-                context.bot,
-                int(target_user_id),
-                data,
-                requested_pin,
-            )
-
+            ok, should_remove = await _safe_send_one(bot, target_user_id, data, requested_pin)
             if should_remove:
-                try:
-                    remove_user(int(target_user_id))
-                except Exception:
-                    pass
-
-            await context.bot.send_message(
+                remove_user(target_user_id)
+            await bot.send_message(
                 chat_id=admin_chat_id,
                 text=(
-                    f"✅ Envio finalizado.\n\n"
-                    f"📤 Enviadas: {1 if ok else 0}\n"
-                    f"❌ Falhas: {0 if ok else 1}"
+                    "✅ Envio finalizado.\n\n"
+                    f"📤 <b>Enviadas:</b> <code>{1 if ok else 0}</code>\n"
+                    f"❌ <b>Falhas:</b> <code>{0 if ok else 1}</code>"
                 ),
+                parse_mode=ParseMode.HTML,
                 reply_to_message_id=reply_to_message_id,
             )
             return
 
         users = get_all_users()
-
         if not users:
-            await context.bot.send_message(
-                chat_id=admin_chat_id,
-                text="❌ Não há usuários salvos ainda.",
-                reply_to_message_id=reply_to_message_id,
-            )
+            await bot.send_message(chat_id=admin_chat_id, text="Nao ha usuarios salvos ainda.", reply_to_message_id=reply_to_message_id)
             return
 
         total = len(users)
         should_pin = requested_pin and total <= PIN_MAX_USERS
-
-        status_text = f"🚀 Iniciando transmissão...\n\n👥 Total alvo: {total}"
+        pin_warning = ""
         if requested_pin and not should_pin:
-            status_text += f"\n📌 Pin desativado automaticamente para listas acima de {PIN_MAX_USERS} usuários."
-
-        status_msg = await context.bot.send_message(
+            pin_warning = f"\n📌 <b>Pin desativado automaticamente</b> para listas acima de <code>{PIN_MAX_USERS}</code> usuarios."
+        status_msg = await bot.send_message(
             chat_id=admin_chat_id,
-            text=status_text,
+            text=f"🚀 Iniciando transmissao...\n\n👥 <b>Total alvo:</b> <code>{total}</code>{pin_warning}",
+            parse_mode=ParseMode.HTML,
             reply_to_message_id=reply_to_message_id,
         )
 
-        queue: asyncio.Queue = asyncio.Queue()
-        counters = {
+        queue: asyncio.Queue[int | None] = asyncio.Queue()
+        counters: dict[str, Any] = {
             "sent": 0,
             "failed": 0,
             "processed": 0,
-            "removed": 0,
+            "remove_ids": set(),
             "last_status_at": time.monotonic(),
+            "status_lock": asyncio.Lock(),
         }
 
         for user_id in users:
-            await queue.put(user_id)
+            await queue.put(int(user_id))
+        for _ in range(SEND_WORKERS):
+            await queue.put(None)
 
         workers = [
             asyncio.create_task(
                 _broadcast_worker(
-                    queue=queue,
-                    bot=context.bot,
+                    queue,
+                    bot=bot,
                     data=data,
                     should_pin=should_pin,
                     counters=counters,
@@ -553,208 +660,208 @@ async def _execute_broadcast_background(
             for _ in range(SEND_WORKERS)
         ]
 
-        for _ in workers:
-            await queue.put(None)
-
         await queue.join()
         await asyncio.gather(*workers, return_exceptions=True)
 
-        final_text = (
-            f"✅ Transmissão finalizada.\n\n"
-            f"📤 Enviadas: {counters['sent']}\n"
-            f"❌ Falhas: {counters['failed']}\n"
-            f"🧹 Removidos: {counters['removed']}\n"
-            f"👥 Total processado: {counters['processed']}"
-        )
+        removed = 0
+        for user_id in counters["remove_ids"]:
+            try:
+                remove_user(int(user_id))
+                removed += 1
+            except Exception:
+                LOGGER.debug("Falha ao remover usuario invalido do broadcast", exc_info=True)
 
+        final_text = (
+            "✅ <b>Transmissao finalizada.</b>\n\n"
+            f"📤 <b>Enviadas:</b> <code>{int(counters['sent'])}</code>\n"
+            f"❌ <b>Falhas:</b> <code>{int(counters['failed'])}</code>\n"
+            f"🧹 <b>Removidos:</b> <code>{removed}</code>\n"
+            f"👥 <b>Total processado:</b> <code>{int(counters['processed'])}</code>"
+        )
         try:
-            await status_msg.edit_text(final_text)
+            await status_msg.edit_text(final_text, parse_mode=ParseMode.HTML)
         except Exception:
-            await context.bot.send_message(
+            await bot.send_message(
                 chat_id=admin_chat_id,
                 text=final_text,
+                parse_mode=ParseMode.HTML,
                 reply_to_message_id=reply_to_message_id,
             )
-
     finally:
-        _set_broadcast_running(context, False)
-        context.application.bot_data.pop(GLOBAL_BROADCAST_TASK_KEY, None)
+        application.bot_data[GLOBAL_BROADCAST_RUNNING_KEY] = False
+        application.bot_data.pop(GLOBAL_BROADCAST_TASK_KEY, None)
 
 
-async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if not _is_admin(user.id if user else None):
+    message = update.effective_message
+    if not user or not message or not _is_admin(user.id):
         return
 
-    _reset_broadcast(context)
-    _get_data(context)
-
-    text = _main_menu_text(_get_data(context), running=_broadcast_is_running(context))
-    keyboard = _main_menu_keyboard(_get_data(context), running=_broadcast_is_running(context))
-
-    await update.effective_message.reply_text(
-        text=text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=keyboard,
-        disable_web_page_preview=True,
-    )
+    _set_state(context, "")
+    _panel_data(context)
+    await _show_main_menu(context, source_message=message)
+    await _delete_message_safely(message)
 
 
-async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     user = update.effective_user
-
-    if not query or not user or not _is_admin(user.id):
-        return
-
-    await query.answer()
-
-    guard = await _guard_action(context)
-    if guard == "locked":
-        return
-    if guard == "cooldown":
+    if not query or not query.message or not user or not _is_admin(user.id):
         return
 
     try:
-        raw_data = query.data or ""
-        print(f"[BROADCAST][CALLBACK] data={raw_data!r}")
+        await query.answer()
+    except Exception:
+        LOGGER.debug("Falha ao responder callback do broadcast", exc_info=True)
 
-        if not raw_data.startswith("bc|"):
+    guard = await _guard_action(context)
+    if guard != "ok":
+        return
+
+    try:
+        data = _panel_data(context)
+        action = str(query.data or "")
+        if not action.startswith("bc|"):
             return
-
-        action = raw_data.split("|", 1)[1]
-        payload = _get_data(context)
+        action = action.split("|", 1)[1]
 
         if action == "menu":
-            await _show_main_menu(query, context)
+            await _show_main_menu(context, query_message=query.message)
             return
 
         if action == "close":
             _reset_broadcast(context)
-            try:
-                await query.edit_message_text("✅ Painel de transmissão fechado.")
-            except Exception:
-                pass
+            await _delete_message_safely(query.message)
             return
 
         if action == "reset":
-            _reset_broadcast(context)
-            _get_data(context)
-            await _show_main_menu(query, context)
+            context.user_data[BROADCAST_DATA_KEY] = _blank_data()
+            await _show_main_menu(context, query_message=query.message)
             return
 
         if action == "set_mode":
-            _set_state(context, "awaiting_mode")
-            await query.edit_message_text(
-                "🎯 <b>Escolha o destino</b>\n\n"
-                "Envie:\n"
-                "• <code>1</code> para todos os usuários\n"
-                "• <code>2</code> para um usuário específico",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Voltar", callback_data="bc|menu")]]
-                ),
+            _set_state(context, "")
+            await _render_panel_text(
+                context,
+                "🎯 <b>Escolha o destino</b>\n\nToque em uma das opcoes abaixo.",
+                _mode_keyboard(),
+                query_message=query.message,
+            )
+            return
+
+        if action == "mode_all":
+            data["mode"] = "all"
+            data["target_user_id"] = None
+            await _show_main_menu(context, query_message=query.message, note="Destino definido para todos os usuarios.")
+            return
+
+        if action == "mode_single":
+            data["mode"] = "single"
+            _set_state(context, "awaiting_target_user_id")
+            await _show_prompt(
+                context,
+                "👤 <b>Envie o ID do usuario</b>\n\nO proximo texto enviado sera usado como destino da transmissao.",
+                query_message=query.message,
             )
             return
 
         if action == "set_media":
             _set_state(context, "awaiting_media")
-            await query.edit_message_text(
-                "🖼 <b>Envie uma imagem</b>\n\n"
-                "Ou envie <code>remover</code> para apagar a mídia atual.\n"
-                "Ou <code>pular</code> para voltar.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Voltar", callback_data="bc|menu")]]
-                ),
+            await _show_prompt(
+                context,
+                "🖼 <b>Envie uma imagem</b>\n\nA proxima foto enviada sera salva como midia da transmissao.",
+                query_message=query.message,
+                remove_callback="bc|remove_media",
             )
             return
 
         if action == "set_text":
             _set_state(context, "awaiting_text")
-            await query.edit_message_text(
-                "📝 <b>Envie o texto da transmissão</b>\n\n"
-                "Pode usar HTML simples do Telegram.\n"
-                "Envie <code>remover</code> para apagar.\n"
-                "Envie <code>pular</code> para voltar.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Voltar", callback_data="bc|menu")]]
-                ),
-                disable_web_page_preview=True,
+            await _show_prompt(
+                context,
+                "📝 <b>Envie o texto da transmissao</b>\n\nVoce pode usar HTML simples do Telegram.",
+                query_message=query.message,
+                remove_callback="bc|remove_text",
             )
             return
 
         if action == "set_button":
             _set_state(context, "awaiting_button_text")
-            await query.edit_message_text(
-                "🔘 <b>Envie o texto do botão</b>\n\n"
-                "Exemplo: <code>Assistir agora</code>\n\n"
-                "Envie <code>remover</code> para apagar botão.\n"
-                "Envie <code>pular</code> para voltar.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Voltar", callback_data="bc|menu")]]
-                ),
+            data["draft_button_text"] = ""
+            await _show_prompt(
+                context,
+                "🔘 <b>Envie o texto do botao</b>\n\nExemplo: <code>Assistir agora</code>",
+                query_message=query.message,
+                remove_callback="bc|remove_button",
             )
             return
 
+        if action == "remove_media":
+            data["photo"] = None
+            await _show_main_menu(context, query_message=query.message, note="Midia removida.")
+            return
+
+        if action == "remove_text":
+            data["text"] = ""
+            await _show_main_menu(context, query_message=query.message, note="Texto removido.")
+            return
+
+        if action == "remove_button":
+            data["button_text"] = ""
+            data["button_url"] = ""
+            data["draft_button_text"] = ""
+            await _show_main_menu(context, query_message=query.message, note="Botao removido.")
+            return
+
         if action == "toggle_pin":
-            payload["pin"] = not bool(payload.get("pin"))
-            await _show_main_menu(query, context)
+            data["pin"] = not bool(data.get("pin"))
+            note = "Pin ativado." if bool(data.get("pin")) else "Pin desativado."
+            await _show_main_menu(context, query_message=query.message, note=note)
             return
 
         if action == "preview":
-            await _send_preview(query, context)
+            await _show_preview(context, query_message=query.message)
             return
 
         if action == "send":
             if _broadcast_is_running(context):
-                await query.answer("⚠️ Já existe uma transmissão em andamento.", show_alert=True)
+                await query.answer("Ja existe uma transmissao em andamento.", show_alert=True)
                 return
 
-            mode = payload.get("mode")
+            mode = str(data.get("mode") or "")
             if mode not in {"all", "single"}:
                 await query.answer("Defina o destino primeiro.", show_alert=True)
                 return
 
-            text = (payload.get("text") or "").strip()
-            photo = payload.get("photo")
+            text = str(data.get("text") or "").strip()
+            photo = data.get("photo")
             if not text and not photo:
-                await query.answer("Defina pelo menos texto ou imagem.", show_alert=True)
+                await query.answer("Defina pelo menos um texto ou uma imagem.", show_alert=True)
                 return
 
-            safe_payload = payload.copy()
-
-            _reset_broadcast(context)
-
+            safe_payload = dict(data)
+            _set_state(context, "")
             task = context.application.create_task(
                 _execute_broadcast_background(
-                    context=context,
-                    admin_chat_id=update.effective_chat.id,
-                    reply_to_message_id=update.effective_message.message_id if update.effective_message else None,
+                    application=context.application,
+                    bot=context.bot,
+                    admin_chat_id=int(update.effective_chat.id),
+                    reply_to_message_id=int(query.message.message_id),
                     data=safe_payload,
                 )
             )
             _set_broadcast_task(context, task)
-
-            try:
-                await query.edit_message_text("🚀 Broadcast iniciado. Acompanhe pelo chat.")
-            except Exception:
-                pass
+            _set_broadcast_running(context, True)
+            await _show_main_menu(context, query_message=query.message, note="Broadcast iniciado. Acompanhe pelo chat.")
             return
-
-    except Exception as e:
-        print(f"[BROADCAST][ERRO] {repr(e)}")
-        raise
     finally:
         _release_guard(context)
 
 
-async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     message = update.effective_message
-
     if not user or not message or not _is_admin(user.id):
         return
 
@@ -762,137 +869,95 @@ async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT
     if not state:
         return
 
-    data = _get_data(context)
+    data = _panel_data(context)
 
-    if state == "awaiting_mode":
-        text = (message.text or "").strip().lower()
+    try:
+        if state == "awaiting_target_user_id":
+            raw = str(message.text or "").strip()
+            if not raw.isdigit():
+                await _show_prompt(
+                    context,
+                    "👤 <b>Envie o ID do usuario</b>\n\nO proximo texto enviado sera usado como destino da transmissao.",
+                    source_message=message,
+                    note="Envie um ID numerico valido.",
+                )
+                return
 
-        if text == "1":
-            data["mode"] = "all"
-            data["target_user_id"] = None
-            _set_state(context, "")
-            await message.reply_text("✅ Destino definido: todos os usuários.")
-            return
-
-        if text == "2":
             data["mode"] = "single"
-            _set_state(context, "awaiting_target_user_id")
-            await message.reply_text(
-                "👤 Agora envie o <b>ID do usuário</b> que vai receber a transmissão.",
-                parse_mode=ParseMode.HTML,
+            data["target_user_id"] = int(raw)
+            await _show_main_menu(context, source_message=message, note=f"Usuario alvo salvo: <code>{_escape(raw)}</code>.")
+            return
+
+        if state == "awaiting_media":
+            photo = message.photo[-1] if message.photo else None
+            if not photo:
+                await _show_prompt(
+                    context,
+                    "🖼 <b>Envie uma imagem</b>\n\nA proxima foto enviada sera salva como midia da transmissao.",
+                    source_message=message,
+                    remove_callback="bc|remove_media",
+                    note="Envie uma imagem valida para continuar.",
+                )
+                return
+
+            data["photo"] = photo.file_id
+            await _show_main_menu(context, source_message=message, note="Midia salva com sucesso.")
+            return
+
+        if state == "awaiting_text":
+            raw = str(message.text or "").strip()
+            if not raw:
+                await _show_prompt(
+                    context,
+                    "📝 <b>Envie o texto da transmissao</b>\n\nVoce pode usar HTML simples do Telegram.",
+                    source_message=message,
+                    remove_callback="bc|remove_text",
+                    note="Envie um texto para continuar.",
+                )
+                return
+
+            data["text"] = raw
+            await _show_main_menu(context, source_message=message, note="Texto salvo com sucesso.")
+            return
+
+        if state == "awaiting_button_text":
+            raw = str(message.text or "").strip()
+            if not raw:
+                await _show_prompt(
+                    context,
+                    "🔘 <b>Envie o texto do botao</b>\n\nExemplo: <code>Assistir agora</code>",
+                    source_message=message,
+                    remove_callback="bc|remove_button",
+                    note="Envie um texto para continuar.",
+                )
+                return
+
+            data["draft_button_text"] = raw
+            _set_state(context, "awaiting_button_url")
+            await _show_prompt(
+                context,
+                "🔗 <b>Agora envie a URL do botao</b>\n\nExemplo:\n<code>https://t.me/seucanal</code>",
+                source_message=message,
+                remove_callback="bc|remove_button",
             )
             return
 
-        await message.reply_text("⚠️ Envie apenas 1 ou 2.")
-        return
+        if state == "awaiting_button_url":
+            raw = str(message.text or "").strip()
+            if not (raw.startswith("http://") or raw.startswith("https://") or raw.startswith("tg://")):
+                await _show_prompt(
+                    context,
+                    "🔗 <b>Agora envie a URL do botao</b>\n\nExemplo:\n<code>https://t.me/seucanal</code>",
+                    source_message=message,
+                    remove_callback="bc|remove_button",
+                    note="URL invalida. Envie uma URL com http://, https:// ou tg://",
+                )
+                return
 
-    if state == "awaiting_target_user_id":
-        raw = (message.text or "").strip()
-
-        if not raw.isdigit():
-            await message.reply_text("⚠️ Envie um ID numérico válido.")
+            data["button_text"] = str(data.get("draft_button_text") or "").strip()
+            data["button_url"] = raw
+            data["draft_button_text"] = ""
+            await _show_main_menu(context, source_message=message, note="Botao salvo com sucesso.")
             return
-
-        data["target_user_id"] = int(raw)
-        _set_state(context, "")
-        await message.reply_text(
-            f"✅ Usuário alvo definido: <code>{raw}</code>",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    if state == "awaiting_media":
-        raw = (message.text or "").strip().lower()
-
-        if raw == "pular":
-            _set_state(context, "")
-            await message.reply_text("↩️ Voltei.")
-            return
-
-        if raw == "remover":
-            data["photo"] = None
-            _set_state(context, "")
-            await message.reply_text("✅ Mídia removida.")
-            return
-
-        photo = message.photo[-1] if message.photo else None
-        if not photo:
-            await message.reply_text("⚠️ Envie uma imagem, ou use remover/pular.")
-            return
-
-        data["photo"] = photo.file_id
-        _set_state(context, "")
-        await message.reply_text("✅ Mídia salva.")
-        return
-
-    if state == "awaiting_text":
-        raw = (message.text or "").strip()
-
-        if raw.lower() == "pular":
-            _set_state(context, "")
-            await message.reply_text("↩️ Voltei.")
-            return
-
-        if raw.lower() == "remover":
-            data["text"] = ""
-            _set_state(context, "")
-            await message.reply_text("✅ Texto removido.")
-            return
-
-        data["text"] = raw
-        _set_state(context, "")
-        await message.reply_text("✅ Texto salvo.")
-        return
-
-    if state == "awaiting_button_text":
-        raw = (message.text or "").strip()
-
-        if raw.lower() == "pular":
-            _set_state(context, "")
-            await message.reply_text("↩️ Voltei.")
-            return
-
-        if raw.lower() == "remover":
-            data["button_text"] = ""
-            data["button_url"] = ""
-            _set_state(context, "")
-            await message.reply_text("✅ Botão removido.")
-            return
-
-        data["button_text"] = raw
-        _set_state(context, "awaiting_button_url")
-        await message.reply_text(
-            "🔗 Agora envie a URL do botão.\n\n"
-            "Exemplo:\n"
-            "<code>https://t.me/seucanal</code>",
-            parse_mode=ParseMode.HTML,
-            disable_web_page_preview=True,
-        )
-        return
-
-    if state == "awaiting_button_url":
-        raw = (message.text or "").strip()
-
-        if raw.lower() == "pular":
-            data["button_text"] = ""
-            _set_state(context, "")
-            await message.reply_text("↩️ Cancelado.")
-            return
-
-        if not (
-            raw.startswith("http://")
-            or raw.startswith("https://")
-            or raw.startswith("tg://")
-        ):
-            await message.reply_text(
-                "⚠️ URL inválida. Envie uma URL começando com http://, https:// ou tg://"
-            )
-            return
-
-        data["button_url"] = raw
-        _set_state(context, "")
-        await message.reply_text(
-            "✅ Botão salvo.",
-            disable_web_page_preview=True,
-        )
-        return
+    finally:
+        await _delete_message_safely(message)
