@@ -27,6 +27,8 @@ from handlers.broadcast import (
     broadcast_message_router,
     broadcast_public_callbacks,
 )
+from handlers.control_block import control_block_callback_guard, control_block_message_guard
+from services.control_agent import start_control_agent, stop_control_agent
 from handlers.callbacks import callbacks
 from handlers.help import ajuda
 from handlers.language import idioma
@@ -76,6 +78,7 @@ def _bot_log(event: str, **payload: Any) -> None:
 
 
 async def post_init(app: Application) -> None:
+    await start_control_agent(app)
     await start_pdf_workers(app)
     await start_epub_workers(app)
     await set_bot_commands_job(app)
@@ -108,6 +111,7 @@ async def post_init(app: Application) -> None:
 
 
 async def post_shutdown(app: Application) -> None:
+    await stop_control_agent(app)
     await stop_epub_workers(app)
     await stop_pdf_workers(app)
     await close_http_client()
