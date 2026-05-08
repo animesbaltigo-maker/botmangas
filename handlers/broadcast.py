@@ -7,10 +7,11 @@ import logging
 import re
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
+from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.constants import ParseMode
@@ -31,8 +32,8 @@ BROADCAST_PANEL_KEY = "broadcast_panel"
 
 BROADCAST_COOLDOWN = 1.0
 
-SEND_WORKERS = 4
-PER_MESSAGE_DELAY = 0.05
+SEND_WORKERS = 3
+PER_MESSAGE_DELAY = 0.12
 STATUS_EVERY = 50
 STATUS_MIN_INTERVAL = 2.0
 PIN_WARN_USERS = 20
@@ -46,6 +47,11 @@ GLOBAL_BROADCAST_PUBLIC_ALERTS_KEY = "broadcast_public_alerts"
 
 TEMPLATES_PATH = Path("data") / "broadcast_templates.json"
 
+try:
+    BRASILIA_TZ = ZoneInfo("America/Sao_Paulo")
+except Exception:
+    BRASILIA_TZ = timezone(timedelta(hours=-3), "America/Sao_Paulo")
+
 
 def _is_admin(user_id: int | None) -> bool:
     return user_id is not None and user_id in ADMIN_IDS
@@ -56,7 +62,7 @@ def _escape(value: object) -> str:
 
 
 def _yes_no(value: bool) -> str:
-    return "Sim" if value else "NÃ£o"
+    return "Sim" if value else "Não"
 
 
 def _blank_data() -> dict[str, object]:
@@ -125,7 +131,7 @@ async def _delete_message_safely(message: Message | None) -> None:
     try:
         await message.delete()
     except Exception:
-        LOGGER.debug("NÃ£o foi possÃ­vel apagar mensagem do broadcast", exc_info=True)
+        LOGGER.debug("Não foi possível apagar mensagem do broadcast", exc_info=True)
 
 
 async def _guard_action(context: ContextTypes.DEFAULT_TYPE) -> str:
@@ -171,10 +177,10 @@ def _broadcast_control(context: ContextTypes.DEFAULT_TYPE) -> dict[str, object]:
 
 def _mode_label(mode: str | None) -> str:
     if mode == "all":
-        return "Todos os usuÃ¡rios"
+        return "Todos os usuários"
     if mode == "single":
-        return "UsuÃ¡rio especÃ­fico"
-    return "NÃ£o definido"
+        return "Usuário específico"
+    return "Não definido"
 
 
 def _format_line(label: str, value: str) -> str:
@@ -199,9 +205,9 @@ def _button_count(data: dict[str, object]) -> int:
 def _schedule_label(data: dict[str, object]) -> str:
     value = data.get("schedule_at")
     if not value:
-        return "NÃ£o"
+        return "Não"
     try:
-        dt = datetime.fromtimestamp(float(value))
+        dt = datetime.fromtimestamp(float(value), BRASILIA_TZ)
     except Exception:
         return "Sim"
     return dt.strftime("%d/%m/%Y %H:%M")
@@ -284,8 +290,8 @@ def _templates_keyboard(templates: list[dict[str, object]]) -> InlineKeyboardMar
     rows: list[list[InlineKeyboardButton]] = []
     for idx, template in enumerate(templates[:TEMPLATE_LIMIT]):
         name = str(template.get("name") or f"Modelo {idx + 1}")[:32]
-        rows.append([InlineKeyboardButton(f"ðŸ“Œ {name}", callback_data=f"bc|load_template|{idx}")])
-    rows.append([InlineKeyboardButton("ðŸ”™ Voltar", callback_data="bc|menu")])
+        rows.append([InlineKeyboardButton(f"📌 {name}", callback_data=f"bc|load_template|{idx}")])
+    rows.append([InlineKeyboardButton("🔙 Voltar", callback_data="bc|menu")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -330,7 +336,7 @@ def _apply_template(data: dict[str, object], template: dict[str, object]) -> Non
 
 def _parse_when(raw: str) -> float | None:
     text = raw.strip().lower()
-    now = datetime.now()
+    now = datetime.now(BRASILIA_TZ)
     match = re.fullmatch(r"(\d{1,2}):(\d{2})", text)
     if match:
         hour, minute = int(match.group(1)), int(match.group(2))
@@ -341,7 +347,7 @@ def _parse_when(raw: str) -> float | None:
             dt += timedelta(days=1)
         return dt.timestamp()
 
-    match = re.fullmatch(r"(hoje|amanh[Ã£a])\s+(\d{1,2}):(\d{2})", text)
+    match = re.fullmatch("(hoje|amanh[\u00e3a?])\\s+(\\d{1,2}):(\\d{2})", text)
     if match:
         hour, minute = int(match.group(2)), int(match.group(3))
         if hour > 23 or minute > 59:
@@ -355,13 +361,12 @@ def _parse_when(raw: str) -> float | None:
 
     for fmt in ("%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M"):
         try:
-            dt = datetime.strptime(text, fmt)
+            dt = datetime.strptime(text, fmt).replace(tzinfo=BRASILIA_TZ)
         except ValueError:
             continue
         if dt > now:
             return dt.timestamp()
     return None
-
 
 def _parse_buttons(raw: str) -> tuple[list[list[dict[str, str]]], str | None]:
     rows: list[list[dict[str, str]]] = []
@@ -373,11 +378,11 @@ def _parse_buttons(raw: str) -> tuple[list[list[dict[str, str]]], str | None]:
         for part in re.split(r"\s+&&\s+", line):
             match = re.match(r"^(.+?)\s+-\s+(.+)$", part.strip())
             if not match:
-                return [], "Use o formato: Texto do botÃ£o - link"
+                return [], "Use o formato: Texto do botão - link"
             label = match.group(1).strip()
             value = match.group(2).strip()
             if not label or len(label) > 64:
-                return [], "O texto de cada botÃ£o precisa ter atÃ© 64 caracteres."
+                return [], "O texto de cada botão precisa ter até 64 caracteres."
             lowered = value.lower()
             if lowered.startswith(("popup:", "alert:")):
                 payload = value.split(":", 1)[1].strip()
@@ -387,19 +392,19 @@ def _parse_buttons(raw: str) -> tuple[list[list[dict[str, str]]], str | None]:
             elif lowered.startswith("share:"):
                 payload = value.split(":", 1)[1].strip()
                 if not payload:
-                    return [], "O botÃ£o de compartilhamento precisa ter um texto ou link."
+                    return [], "O botão de compartilhamento precisa ter um texto ou link."
                 row.append({"type": "url", "text": label, "value": "https://t.me/share/url?url=" + quote_plus(payload)})
             else:
                 if value.startswith("t.me/"):
                     value = "https://" + value
                 if not value.startswith(("http://", "https://", "tg://")):
-                    return [], "Links precisam comeÃ§ar com http://, https://, tg:// ou t.me/"
+                    return [], "Links precisam começar com http://, https://, tg:// ou t.me/"
                 row.append({"type": "url", "text": label, "value": value})
         rows.append(row)
     if not rows:
-        return [], "Envie pelo menos um botÃ£o."
+        return [], "Envie pelo menos um botão."
     if sum(len(row) for row in rows) > 16:
-        return [], "Use no mÃ¡ximo 16 botÃµes por transmissÃ£o."
+        return [], "Use no máximo 16 botões por transmissão."
     return rows, None
 
 
@@ -451,7 +456,7 @@ def _view_text(title: str, body: str) -> str:
 def _preview_text(data: dict[str, object]) -> str:
     text = str(data.get("text") or "").strip()
     lines = [
-        "ðŸ‘€ <b>PrÃ©via da transmissÃ£o</b>",
+        "👀 <b>Prévia da transmissão</b>",
         "",
         _format_line("Destino", f"<code>{_escape(_mode_label(str(data.get('mode') or '')))}</code>"),
     ]
@@ -459,8 +464,8 @@ def _preview_text(data: dict[str, object]) -> str:
         lines.append(_format_line("ID alvo", f"<code>{_escape(data.get('target_user_id'))}</code>"))
     lines.extend(
         [
-            _format_line("MÃ­dia", f"<code>{_yes_no(bool(data.get('has_media')))}</code>"),
-            _format_line("BotÃµes", f"<code>{_button_count(data)}</code>"),
+            _format_line("Mídia", f"<code>{_yes_no(bool(data.get('has_media')))}</code>"),
+            _format_line("Botões", f"<code>{_button_count(data)}</code>"),
             _format_line("Fixar", f"<code>{_yes_no(bool(data.get('pin')))}</code>"),
             _format_line("Agendado", f"<code>{_escape(_schedule_label(data))}</code>"),
         ]
@@ -550,7 +555,7 @@ async def _render_panel_text(
                 try:
                     await context.bot.delete_message(chat_id=int(panel["chat_id"]), message_id=int(panel["message_id"]))
                 except Exception:
-                    LOGGER.debug("Falha ao apagar painel antigo com mÃ­dia", exc_info=True)
+                    LOGGER.debug("Falha ao apagar painel antigo com mídia", exc_info=True)
                 return sent
 
             await context.bot.edit_message_text(
@@ -655,7 +660,7 @@ async def _send_broadcast_message(bot, context: ContextTypes.DEFAULT_TYPE, chat_
             if media_type in {"sticker", "video_note"} and (text or reply_markup):
                 return await bot.send_message(
                     chat_id=chat_id,
-                    text=text or "ðŸ“¢",
+                    text=text or "📢",
                     parse_mode=ParseMode.HTML,
                     reply_markup=reply_markup,
                     disable_web_page_preview=True,
@@ -674,7 +679,7 @@ async def _send_broadcast_message(bot, context: ContextTypes.DEFAULT_TYPE, chat_
 
     return await bot.send_message(
         chat_id=chat_id,
-        text=text or "ðŸ“¢",
+        text=text or "📢",
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup,
         disable_web_page_preview=True,
@@ -771,7 +776,8 @@ async def _broadcast_worker(
             while bool(control.get("paused")) and not bool(control.get("cancelled")):
                 await asyncio.sleep(1.0)
             if bool(control.get("cancelled")):
-                return
+                counters["processed"] += 1
+                continue
 
             ok, should_remove = await _safe_send_one(bot, context, int(user_id), data, should_pin)
             if ok:
@@ -820,12 +826,12 @@ async def _execute_broadcast_background(
             return
 
         if not text and not has_media:
-            await bot.send_message(chat_id=admin_chat_id, text="Defina pelo menos uma mensagem ou uma mÃ­dia.", reply_to_message_id=reply_to_message_id)
+            await bot.send_message(chat_id=admin_chat_id, text="Defina pelo menos uma mensagem ou uma mídia.", reply_to_message_id=reply_to_message_id)
             return
 
         if mode == "single":
             if not isinstance(target_user_id, int):
-                await bot.send_message(chat_id=admin_chat_id, text="Envie um ID numÃ©rico vÃ¡lido.", reply_to_message_id=reply_to_message_id)
+                await bot.send_message(chat_id=admin_chat_id, text="Envie um ID numérico válido.", reply_to_message_id=reply_to_message_id)
                 return
 
             ok, should_remove = await _safe_send_one(bot, context, target_user_id, data, requested_pin)
@@ -834,9 +840,9 @@ async def _execute_broadcast_background(
             await bot.send_message(
                 chat_id=admin_chat_id,
                 text=(
-                    "âœ… Envio finalizado.\n\n"
-                    f"ðŸ“¤ <b>Enviadas:</b> <code>{1 if ok else 0}</code>\n"
-                    f"âŒ <b>Falhas:</b> <code>{0 if ok else 1}</code>"
+                    "✅ Envio finalizado.\n\n"
+                    f"📤 <b>Enviadas:</b> <code>{1 if ok else 0}</code>\n"
+                    f"❌ <b>Falhas:</b> <code>{0 if ok else 1}</code>"
                 ),
                 parse_mode=ParseMode.HTML,
                 reply_to_message_id=reply_to_message_id,
@@ -845,17 +851,17 @@ async def _execute_broadcast_background(
 
         users = get_all_users()
         if not users:
-            await bot.send_message(chat_id=admin_chat_id, text="NÃ£o hÃ¡ usuÃ¡rios salvos ainda.", reply_to_message_id=reply_to_message_id)
+            await bot.send_message(chat_id=admin_chat_id, text="Não há usuários salvos ainda.", reply_to_message_id=reply_to_message_id)
             return
 
         total = len(users)
         should_pin = requested_pin and total <= PIN_MAX_USERS
         pin_warning = ""
         if requested_pin and not should_pin:
-            pin_warning = f"\nðŸ“Œ <b>Fixar foi desativado automaticamente</b> para listas acima de <code>{PIN_MAX_USERS}</code> usuÃ¡rios."
+            pin_warning = f"\n📌 <b>Fixar foi desativado automaticamente</b> para listas acima de <code>{PIN_MAX_USERS}</code> usuários."
         status_msg = await bot.send_message(
             chat_id=admin_chat_id,
-            text=f"ðŸš€ Iniciando transmissÃ£o...\n\nðŸ‘¥ <b>Total alvo:</b> <code>{total}</code>{pin_warning}",
+            text=f"🚀 Iniciando transmissão...\n\n👥 <b>Total alvo:</b> <code>{total}</code>{pin_warning}",
             parse_mode=ParseMode.HTML,
             reply_to_message_id=reply_to_message_id,
             reply_markup=_running_keyboard(_broadcast_control(context)),
@@ -901,16 +907,16 @@ async def _execute_broadcast_background(
                 remove_user(int(user_id))
                 removed += 1
             except Exception:
-                LOGGER.debug("Falha ao remover usuÃ¡rio invÃ¡lido do broadcast", exc_info=True)
+                LOGGER.debug("Falha ao remover usuário inválido do broadcast", exc_info=True)
 
         cancelled = bool(_broadcast_control(context).get("cancelled"))
-        final_title = "ðŸ›‘ <b>TransmissÃ£o cancelada.</b>" if cancelled else "âœ… <b>TransmissÃ£o finalizada.</b>"
+        final_title = "🛑 <b>Transmissão cancelada.</b>" if cancelled else "✅ <b>Transmissão finalizada.</b>"
         final_text = (
             f"{final_title}\n\n"
-            f"ðŸ“¤ <b>Enviadas:</b> <code>{int(counters['sent'])}</code>\n"
-            f"âŒ <b>Falhas:</b> <code>{int(counters['failed'])}</code>\n"
-            f"ðŸ§¹ <b>Removidos:</b> <code>{removed}</code>\n"
-            f"ðŸ‘¥ <b>Total processado:</b> <code>{int(counters['processed'])}</code>"
+            f"📤 <b>Enviadas:</b> <code>{int(counters['sent'])}</code>\n"
+            f"❌ <b>Falhas:</b> <code>{int(counters['failed'])}</code>\n"
+            f"🧹 <b>Removidos:</b> <code>{removed}</code>\n"
+            f"👥 <b>Total processado:</b> <code>{int(counters['processed'])}</code>"
         )
         try:
             await status_msg.edit_text(final_text, parse_mode=ParseMode.HTML)
@@ -947,7 +953,7 @@ async def _scheduled_broadcast_runner(
 
 async def _start_send(update: Update, context: ContextTypes.DEFAULT_TYPE, query_message: Message, data: dict[str, object]) -> None:
     if _broadcast_is_running(context):
-        await update.callback_query.answer("JÃ¡ existe uma transmissÃ£o em andamento.", show_alert=True)
+        await update.callback_query.answer("Já existe uma transmissão em andamento.", show_alert=True)
         return
 
     mode = str(data.get("mode") or "")
@@ -955,7 +961,7 @@ async def _start_send(update: Update, context: ContextTypes.DEFAULT_TYPE, query_
         await update.callback_query.answer("Defina o destino primeiro.", show_alert=True)
         return
     if not _content_ready(data):
-        await update.callback_query.answer("Defina uma mensagem ou mÃ­dia antes de enviar.", show_alert=True)
+        await update.callback_query.answer("Defina uma mensagem ou mídia antes de enviar.", show_alert=True)
         return
 
     total = 1 if mode == "single" else get_total_users()
@@ -965,8 +971,8 @@ async def _start_send(update: Update, context: ContextTypes.DEFAULT_TYPE, query_
         data["confirm_pin"] = True
         await _render_panel_text(
             context,
-            "ðŸ“Œ <b>Fixar mensagem exige cuidado</b>\n\n"
-            f"<blockquote>VocÃª estÃ¡ tentando fixar para <code>{total}</code> usuÃ¡rios. Isso pode gerar incÃ´modo e limitaÃ§Ãµes. Confirma mesmo assim?</blockquote>",
+            "📌 <b>Fixar mensagem exige cuidado</b>\n\n"
+            f"<blockquote>Você está tentando fixar para <code>{total}</code> usuários. Isso pode gerar incômodo e limitações. Confirma mesmo assim?</blockquote>",
             _confirm_keyboard(),
             query_message=query_message,
         )
@@ -991,7 +997,7 @@ async def _start_send(update: Update, context: ContextTypes.DEFAULT_TYPE, query_
             )
         )
         _set_broadcast_task(context, task)
-        await _show_main_menu(context, query_message=query_message, note=f"TransmissÃ£o agendada para <code>{_escape(_schedule_label(data))}</code>.")
+        await _show_main_menu(context, query_message=query_message, note=f"Transmissão agendada para <code>{_escape(_schedule_label(data))}</code>.")
         return
 
     context.application.bot_data[GLOBAL_BROADCAST_CONTROL_KEY] = {"paused": False, "cancelled": False}
@@ -1028,7 +1034,7 @@ async def broadcast_public_callbacks(update: Update, context: ContextTypes.DEFAU
         return
     parts = str(query.data or "").split("|", 2)
     if len(parts) == 3 and parts[1] == "alert":
-        await query.answer(_public_alerts(context).get(parts[2], "Aviso indisponÃ­vel."), show_alert=True)
+        await query.answer(_public_alerts(context).get(parts[2], "Aviso indisponível."), show_alert=True)
         return
     await query.answer()
 
@@ -1058,11 +1064,11 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         if action == "pause":
             _broadcast_control(context)["paused"] = True
-            await query.answer("TransmissÃ£o pausada.")
+            await query.answer("Transmissão pausada.")
             return
         if action == "resume":
             _broadcast_control(context)["paused"] = False
-            await query.answer("TransmissÃ£o retomada.")
+            await query.answer("Transmissão retomada.")
             return
         if action == "cancel_running":
             _broadcast_control(context)["cancelled"] = True
@@ -1097,7 +1103,7 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
         if action == "mode_all":
             data["mode"] = "all"
             data["target_user_id"] = None
-            await _show_main_menu(context, query_message=query.message, note="Destino definido para todos os usuÃ¡rios.")
+            await _show_main_menu(context, query_message=query.message, note="Destino definido para todos os usuários.")
             return
 
         if action == "mode_single":
@@ -1165,49 +1171,13 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
 
-        if action == "save_template":
-            if not _content_ready(data):
-                await query.answer("Defina texto ou mÃ­dia antes de salvar.", show_alert=True)
-                return
-            _set_state(context, "awaiting_template_name")
-            await _show_prompt(
-                context,
-                "ðŸ’¾ <b>Salvar modelo</b>\n\n<i>Envie um nome curto para este modelo.</i>",
-                query_message=query.message,
-            )
-            return
-
-        if action == "use_template":
-            templates = _load_templates()
-            if not templates:
-                await _show_main_menu(context, query_message=query.message, note="Nenhum modelo salvo ainda.")
-                return
-            await _render_panel_text(
-                context,
-                "ðŸ“š <b>Modelos salvos</b>\n\n<i>Escolha um modelo para carregar no painel.</i>",
-                _templates_keyboard(templates),
-                query_message=query.message,
-            )
-            return
-
-        if action == "load_template" and len(parts) >= 3:
-            templates = _load_templates()
-            try:
-                template = templates[int(parts[2])]
-            except Exception:
-                await query.answer("Modelo nÃ£o encontrado.", show_alert=True)
-                return
-            _apply_template(data, template)
-            await _show_main_menu(context, query_message=query.message, note=f"Modelo carregado: <code>{_escape(template.get('name'))}</code>.")
-            return
-
         if action == "remove_media":
             data["source_chat_id"] = None
             data["source_message_id"] = None
             data["media_type"] = None
             data["media_file_id"] = None
             data["has_media"] = False
-            await _show_main_menu(context, query_message=query.message, note="MÃ­dia removida.")
+            await _show_main_menu(context, query_message=query.message, note="Mídia removida.")
             return
 
         if action == "remove_text":
@@ -1217,7 +1187,7 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         if action == "remove_buttons":
             data["button_rows"] = []
-            await _show_main_menu(context, query_message=query.message, note="BotÃµes removidos.")
+            await _show_main_menu(context, query_message=query.message, note="Botões removidos.")
             return
 
         if action == "remove_schedule":
@@ -1228,7 +1198,7 @@ async def broadcast_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE
         if action == "toggle_pin":
             data["pin"] = not bool(data.get("pin"))
             data["confirm_pin"] = False
-            note = "Fixar ativado. HaverÃ¡ trava automÃ¡tica para listas grandes." if bool(data.get("pin")) else "Fixar desativado."
+            note = "Fixar ativado. Haverá trava automática para listas grandes." if bool(data.get("pin")) else "Fixar desativado."
             await _show_main_menu(context, query_message=query.message, note=note)
             return
 
@@ -1302,15 +1272,15 @@ async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT
             if not raw.isdigit():
                 await _show_prompt(
                     context,
-                    "ðŸ‘¤ <b>Envie o ID do usuÃ¡rio</b>\n\n<i>O prÃ³ximo texto enviado serÃ¡ usado como destino da transmissÃ£o.</i>",
+                    "👤 <b>Envie o ID do usuário</b>\n\n<i>O próximo texto enviado será usado como destino da transmissão.</i>",
                     source_message=message,
-                    note="Envie um ID numÃ©rico vÃ¡lido.",
+                    note="Envie um ID numérico válido.",
                 )
                 return
 
             data["mode"] = "single"
             data["target_user_id"] = int(raw)
-            await _show_main_menu(context, source_message=message, note=f"UsuÃ¡rio alvo salvo: <code>{_escape(raw)}</code>.")
+            await _show_main_menu(context, source_message=message, note=f"Usuário alvo salvo: <code>{_escape(raw)}</code>.")
             return
 
         if state == "awaiting_media":
@@ -1326,11 +1296,11 @@ async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT
             ):
                 await _show_prompt(
                     context,
-                    "ðŸ–¼ <b>Envie a mÃ­dia da publicaÃ§Ã£o!</b>\n"
-                    "<i>Tipos permitidos: fotos, vÃ­deos, arquivos, figurinhas, GIFs, Ã¡udio, mensagens de voz e vÃ­deos redondos.</i>",
+                    "🖼 <b>Envie a mídia da publicação!</b>\n"
+                    "<i>Tipos permitidos: fotos, vídeos, arquivos, figurinhas, GIFs, áudio, mensagens de voz e vídeos redondos.</i>",
                     source_message=message,
                     remove_callback="bc|remove_media",
-                    note="Envie uma mÃ­dia vÃ¡lida para continuar.",
+                    note="Envie uma mídia válida para continuar.",
                 )
                 return
 
@@ -1366,7 +1336,7 @@ async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT
             data["media_type"] = media_type
             data["media_file_id"] = media_file_id
             data["has_media"] = True
-            await _show_main_menu(context, source_message=message, note="MÃ­dia salva com sucesso.")
+            await _show_main_menu(context, source_message=message, note="Mídia salva com sucesso.")
             return
 
         if state == "awaiting_text":
@@ -1374,8 +1344,8 @@ async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT
             if not raw:
                 await _show_prompt(
                     context,
-                    "ðŸ“ <b>Envie a mensagem da postagem</b>\n"
-                    "<i>VocÃª pode usar negrito, itÃ¡lico e links feitos pelo prÃ³prio Telegram. HTML simples tambÃ©m funciona.</i>",
+                    "📝 <b>Envie a mensagem da postagem</b>\n"
+                    "<i>Você pode usar negrito, itálico e links feitos pelo próprio Telegram. HTML simples também funciona.</i>",
                     source_message=message,
                     remove_callback="bc|remove_text",
                     note="Envie um texto para continuar.",
@@ -1383,7 +1353,7 @@ async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT
                 return
 
             data["text"] = raw
-            await _show_main_menu(context, source_message=message, note="Mensagem salva com formataÃ§Ã£o.")
+            await _show_main_menu(context, source_message=message, note="Mensagem salva com formatação.")
             return
 
         if state == "awaiting_buttons":
@@ -1391,8 +1361,8 @@ async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT
             if error:
                 await _show_prompt(
                     context,
-                    "ðŸ”˜ <b>Defina os botÃµes da postagem</b>\n\n"
-                    "<blockquote>Texto do botÃ£o - https://t.me/Exemplo\n"
+                    "🔘 <b>Defina os botões da postagem</b>\n\n"
+                    "<blockquote>Texto do botão - https://t.me/Exemplo\n"
                     "Linha com dois - https://site.com && Canal - https://t.me/canal</blockquote>",
                     source_message=message,
                     remove_callback="bc|remove_buttons",
@@ -1400,7 +1370,7 @@ async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT
                 )
                 return
             data["button_rows"] = rows
-            await _show_main_menu(context, source_message=message, note=f"{_button_count(data)} botÃ£o(Ãµes) salvo(s).")
+            await _show_main_menu(context, source_message=message, note=f"{_button_count(data)} botão(ões) salvo(s).")
             return
 
         if state == "awaiting_schedule":
@@ -1408,26 +1378,16 @@ async def broadcast_message_router(update: Update, context: ContextTypes.DEFAULT
             if not when_ts:
                 await _show_prompt(
                     context,
-                    "ðŸ—“ <b>Agendar transmissÃ£o</b>\n\n"
-                    "<blockquote>20:00\nhoje 20:00\namanhÃ£ 12:00\n25/12/2026 08:30</blockquote>",
+                    "🗓 <b>Agendar transmissão</b>\n\n"
+                    "<blockquote>20:00\nhoje 20:00\namanhã 12:00\n25/12/2026 08:30</blockquote>",
                     source_message=message,
                     remove_callback="bc|remove_schedule",
-                    note="NÃ£o entendi esse horÃ¡rio. Envie uma data futura.",
+                    note="Não entendi esse horário. Envie uma data futura.",
                 )
                 return
             data["schedule_at"] = when_ts
             await _show_main_menu(context, source_message=message, note=f"Agendado para <code>{_escape(_schedule_label(data))}</code>.")
             return
 
-        if state == "awaiting_template_name":
-            name = str(message.text or "").strip()[:40]
-            if not name:
-                await _show_prompt(context, "ðŸ’¾ <b>Salvar modelo</b>\n\n<i>Envie um nome curto para este modelo.</i>", source_message=message, note="Nome invÃ¡lido.")
-                return
-            templates = _load_templates()
-            templates.insert(0, _template_payload(data, name))
-            _save_templates(templates)
-            await _show_main_menu(context, source_message=message, note=f"Modelo salvo: <code>{_escape(name)}</code>.")
-            return
     finally:
         await _delete_message_safely(message)
