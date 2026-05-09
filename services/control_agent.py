@@ -13,7 +13,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, Forbidden, RetryAfter, TimedOut, NetworkError
 
-from config import ADMIN_IDS
+from config import ADMIN_IDS, DATA_DIR
 from services.control_blocklist import block_user, get_blocked_users, is_blocked
 from services.offline_access import DB_PATH as OFFLINE_ACCESS_DB_PATH, init_offline_access_db, normalize_plan, plan_label
 from services.user_registry import get_all_users, get_total_users, remove_user
@@ -24,10 +24,96 @@ CONTROL_AGENT_HOST = os.getenv("CONTROL_AGENT_HOST", "127.0.0.1")
 CONTROL_AGENT_PORT = int(os.getenv("CONTROL_AGENT_PORT", "8782"))
 CONTROL_BOT_ID = os.getenv("CONTROL_BOT_ID", "mangas").strip() or "mangas"
 CONTROL_BOT_NAME = os.getenv("CONTROL_BOT_NAME", "MangasBaltigo_Bot").strip() or CONTROL_BOT_ID
+CONTROL_CHANNEL_USERNAME = os.getenv("CONTROL_CHANNEL_USERNAME", "@mangasbrasil").strip()
+CHANNEL_METRICS_DB_PATH = DATA_DIR / "control_channel_metrics.sqlite3"
 
 _RUNNER: web.AppRunner | None = None
 _SITE: web.TCPSite | None = None
 _STATE: dict[str, Any] = {"broadcast_running": False, "started_at": int(time.time())}
+
+
+def _init_channel_metrics_db() -> None:
+    CHANNEL_METRICS_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(CHANNEL_METRICS_DB_PATH) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS channel_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id INTEGER NOT NULL,
+                username TEXT,
+                title TEXT,
+                subscribers INTEGER NOT NULL,
+                captured_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_channel_snapshots_lookup
+            ON channel_snapshots(channel_id, captured_at)
+            """
+        )
+
+
+def _channel_delta(conn: sqlite3.Connection, channel_id: int, current_count: int, current_at: int, seconds: int) -> int | None:
+    row = conn.execute(
+        """
+        SELECT subscribers
+        FROM channel_snapshots
+        WHERE channel_id = ? AND captured_at <= ?
+        ORDER BY captured_at DESC
+        LIMIT 1
+        """,
+        (channel_id, current_at - seconds),
+    ).fetchone()
+    if row is None:
+        row = conn.execute(
+            """
+            SELECT subscribers
+            FROM channel_snapshots
+            WHERE channel_id = ?
+            ORDER BY captured_at ASC
+            LIMIT 1
+            """,
+            (channel_id,),
+        ).fetchone()
+    return current_count - int(row["subscribers"]) if row else None
+
+
+async def _channel_metrics(app) -> dict[str, Any]:
+    username = CONTROL_CHANNEL_USERNAME
+    if not username:
+        return {"available": False}
+    try:
+        chat = await app.bot.get_chat(username)
+        subscribers = int(await app.bot.get_chat_member_count(chat.id) or 0)
+        now = int(time.time())
+        _init_channel_metrics_db()
+        with sqlite3.connect(CHANNEL_METRICS_DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute(
+                """
+                INSERT INTO channel_snapshots (channel_id, username, title, subscribers, captured_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (int(chat.id), getattr(chat, "username", "") or username.lstrip("@"), getattr(chat, "title", "") or username, subscribers, now),
+            )
+            deltas = {
+                "24h": _channel_delta(conn, int(chat.id), subscribers, now, 86400),
+                "7d": _channel_delta(conn, int(chat.id), subscribers, now, 604800),
+                "30d": _channel_delta(conn, int(chat.id), subscribers, now, 2592000),
+            }
+        return {
+            "available": True,
+            "id": int(chat.id),
+            "username": getattr(chat, "username", "") or username.lstrip("@"),
+            "title": getattr(chat, "title", "") or username,
+            "subscribers": subscribers,
+            "deltas": deltas,
+            "captured_at": now,
+        }
+    except Exception as exc:
+        return {"available": False, "username": username, "error": str(exc)}
 
 
 def _premium_metrics() -> dict[str, Any]:
@@ -199,6 +285,7 @@ async def _health(request: web.Request) -> web.Response:
 
 
 async def _metrics(request: web.Request) -> web.Response:
+    app = request.app["telegram_app"]
     blocked = get_blocked_users()
     return web.json_response({
         "ok": True,
@@ -209,6 +296,7 @@ async def _metrics(request: web.Request) -> web.Response:
         "users_banned": len(blocked),
         "admins": len(ADMIN_IDS),
         "premium": _premium_metrics(),
+        "channel": await _channel_metrics(app),
         "broadcast_running": bool(_STATE.get("broadcast_running")),
         "last_broadcast": _STATE.get("last_broadcast") or {},
     })
