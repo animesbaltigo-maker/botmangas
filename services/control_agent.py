@@ -19,9 +19,9 @@ from services.user_registry import get_all_users, get_total_users, remove_user
 CONTROL_SECRET = os.getenv("CONTROL_SECRET", "")
 CONTROL_AGENT_ENABLED = os.getenv("CONTROL_AGENT_ENABLED", "0").lower() in {"1", "true", "yes", "on"}
 CONTROL_AGENT_HOST = os.getenv("CONTROL_AGENT_HOST", "127.0.0.1")
-CONTROL_AGENT_PORT = int(os.getenv("CONTROL_AGENT_PORT", "8787"))
-CONTROL_BOT_ID = os.getenv("CONTROL_BOT_ID", os.getenv("BOT_USERNAME", "bot")).strip() or "bot"
-CONTROL_BOT_NAME = os.getenv("CONTROL_BOT_NAME", CONTROL_BOT_ID)
+CONTROL_AGENT_PORT = int(os.getenv("CONTROL_AGENT_PORT", "8782"))
+CONTROL_BOT_ID = os.getenv("CONTROL_BOT_ID", "mangas").strip() or "mangas"
+CONTROL_BOT_NAME = os.getenv("CONTROL_BOT_NAME", "MangasBaltigo_Bot").strip() or CONTROL_BOT_ID
 
 _RUNNER: web.AppRunner | None = None
 _SITE: web.TCPSite | None = None
