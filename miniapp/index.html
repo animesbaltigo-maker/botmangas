@@ -60,7 +60,11 @@
     }
 
     *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
-    html { scroll-behavior: smooth; }
+    html {
+      scroll-behavior: smooth;
+      min-height: 100%;
+      height: -webkit-fill-available;
+    }
 
     body {
       font-family: var(--font-b);
@@ -68,6 +72,7 @@
       color: var(--text);
       background: var(--bg);
       min-height: 100dvh;
+      min-height: -webkit-fill-available;
       overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
     }
@@ -95,7 +100,12 @@
     button { font-family: var(--font-b); cursor: pointer; border: none; outline: none; background: none; color: inherit; }
     input { font-family: var(--font-b); border: none; outline: none; background: none; color: inherit; }
 
-    .app { position: relative; z-index: 1; min-height: 100dvh; }
+    .app {
+      position: relative;
+      z-index: 1;
+      min-height: 100dvh;
+      min-height: calc(var(--vh, 1vh) * 100);
+    }
 
     /* ── TOPBAR ── */
     .topbar {
@@ -953,18 +963,30 @@
     }
 
     /* ── READER ── */
-    body.reader-active { background: #000; overscroll-behavior: none; }
+    body.reader-active { background: #000; overscroll-behavior: none; overflow-x: hidden; }
     body.reader-active::before, body.reader-active::after { opacity: 0; }
     body.reader-active .topbar { opacity: 0; visibility: hidden; pointer-events: none; }
-    .reader-wrapper { width: 100%; min-height: 100dvh; background: #000; color: #f4f5ff; }
-    .reader-shell { position: relative; min-height: 100dvh; background: #000; }
-    .reader-pages { display: flex; flex-direction: column; gap: 0; width: 100%; min-height: 100dvh; }
+    body.reader-active .bottom-nav { display: none !important; }
+    body.reader-active.reader-css-fullscreen { overflow: hidden; touch-action: none; }
+    body.reader-active .reader-page {
+      position: fixed;
+      inset: 0;
+      z-index: 900;
+      padding: 0;
+      max-width: none;
+      background: #000;
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+    .reader-wrapper { width: 100%; min-height: 100dvh; min-height: calc(var(--vh, 1vh) * 100); background: #000; color: #f4f5ff; }
+    .reader-shell { position: relative; min-height: 100dvh; min-height: calc(var(--vh, 1vh) * 100); background: #000; }
+    .reader-pages { display: flex; flex-direction: column; gap: 0; width: 100%; min-height: 100dvh; min-height: calc(var(--vh, 1vh) * 100); }
     .reader-page-item { width: 100%; margin: 0; padding: 0; border: none; border-radius: 0; background: #000; display: block; position: relative; line-height: 0; scroll-margin: 0; }
     .reader-page-item img { width: 100%; height: auto; display: block; margin: 0 auto; user-select: none; -webkit-user-drag: none; }
-    .reader-mode-single .reader-pages { display: block; min-height: 100dvh; }
-    .reader-mode-single .reader-page-item { min-height: 100dvh; display: none; align-items: center; justify-content: center; background: #050505; }
+    .reader-mode-single .reader-pages { display: block; min-height: 100dvh; min-height: calc(var(--vh, 1vh) * 100); }
+    .reader-mode-single .reader-page-item { min-height: 100dvh; min-height: calc(var(--vh, 1vh) * 100); display: none; align-items: center; justify-content: center; background: #050505; }
     .reader-mode-single .reader-page-item.active { display: flex; }
-    .reader-mode-single .reader-page-item img { width: auto; max-width: 100vw; max-height: 100dvh; object-fit: contain; }
+    .reader-mode-single .reader-page-item img { width: auto; max-width: 100vw; max-height: 100dvh; max-height: calc(var(--vh, 1vh) * 100); object-fit: contain; }
     .reader-fit-width .reader-page-item img { width: 100%; max-width: 100%; }
     .reader-fit-height.reader-mode-single .reader-page-item img { width: auto; max-width: 100vw; height: auto; max-height: 100dvh; }
     .reader-tap-zone { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
@@ -987,7 +1009,7 @@
     .reader-slider-wrap { min-width: 0; height: 50px; border-radius: 999px; background: rgba(8,8,10,.72); border: 1px solid rgba(255,255,255,.08); display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; align-items: center; gap: 8px; padding: 0 14px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 12px 34px rgba(0,0,0,.42); }
     .reader-page-num { font-size: 16px; font-weight: 800; color: rgba(238,240,255,.86); text-align: center; font-variant-numeric: tabular-nums; }
     .reader-range { width: 100%; accent-color: #a7bcff; }
-    .reader-tool-dock { max-width: 520px; margin: 0 auto; min-height: 58px; border-radius: 999px 999px 0 0; background: rgba(8,8,10,.58); border: 1px solid rgba(255,255,255,.08); border-bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; padding: 6px 18px; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+    .reader-tool-dock { max-width: 520px; margin: 0 auto; min-height: 58px; border-radius: 999px 999px 0 0; background: rgba(8,8,10,.58); border: 1px solid rgba(255,255,255,.08); border-bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; padding: 6px 18px; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
     .reader-tool-btn { height: 46px; display: grid; place-items: center; color: rgba(238,240,255,.74); border-radius: 16px; transition: background .15s, color .15s; }
     .reader-tool-btn:active, .reader-tool-btn.active { background: rgba(255,255,255,.08); color: #fff; }
     .reader-sheet-backdrop { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.58); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s, visibility .18s; }
@@ -1091,6 +1113,57 @@
       margin-top: 22px;
       font-size: 18px;
       color: rgba(245,247,255,.88);
+    }
+
+    @media (orientation: landscape) and (max-height: 500px) {
+      :root { --topbar-h: 0px; --navbar-h: 0px; }
+      body.reader-active { overflow: hidden; }
+      body.reader-active .topbar,
+      body.reader-active .bottom-nav { display: none !important; }
+      body.reader-active .page.reader-page {
+        position: fixed;
+        inset: 0;
+        z-index: 900;
+        padding: 0;
+        max-width: none;
+        overflow: auto;
+        background: #000;
+      }
+      .reader-wrapper,
+      .reader-shell,
+      .reader-pages,
+      .reader-mode-single .reader-page-item {
+        min-height: 100dvh;
+        min-height: calc(var(--vh, 1vh) * 100);
+      }
+      .reader-top-ui { padding: calc(6px + var(--safe-t)) 10px 34px; }
+      .reader-title-text { font-size: 14px; }
+      .reader-sub-text { font-size: 10.5px; }
+      .reader-round-btn { width: 38px; height: 38px; }
+      .reader-bottom-ui { padding: 4px 10px calc(6px + var(--safe-b)); }
+      .reader-page-nav {
+        grid-template-columns: 42px minmax(0, 1fr) 42px;
+        gap: 8px;
+        max-width: min(720px, calc(100vw - 28px));
+        margin-bottom: 6px;
+      }
+      .reader-slider-wrap {
+        height: 40px;
+        grid-template-columns: 26px minmax(0, 1fr) 26px;
+        padding: 0 10px;
+      }
+      .reader-page-num { font-size: 13px; }
+      .reader-tool-dock {
+        max-width: min(480px, calc(100vw - 28px));
+        min-height: 48px;
+        border-radius: 24px 24px 0 0;
+        padding: 4px 14px calc(4px + var(--safe-b));
+      }
+      .reader-tool-btn { height: 38px; border-radius: 14px; }
+      .reader-mode-single .reader-page-item img {
+        max-width: 100vw;
+        max-height: calc(var(--vh, 1vh) * 100);
+      }
     }
     .empty-state { border: 1px solid var(--line); border-radius: var(--r-lg); background: rgba(255,255,255,.02); padding: 28px 20px; text-align: center; color: var(--text2); }
     .empty-icon { font-size: 32px; margin-bottom: 10px; }
@@ -1463,6 +1536,7 @@
   <div class="toast" id="toast"></div>
 </div>
 
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 // ══════════════════════════════════════════
 //  TELEGRAM INIT
@@ -1473,6 +1547,22 @@ tg?.ready();
 tg?.expand();
 tg?.setBackgroundColor?.("#000000");
 tg?.setHeaderColor?.("#000000");
+
+function setViewportVars() {
+  const vh = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0) * 0.01;
+  document.documentElement.style.setProperty("--vh", `${vh}px`);
+  const contentSafeArea = tg?.contentSafeAreaInset || tg?.safeAreaInset || {};
+  const top = Number(contentSafeArea.top || 0);
+  const bottom = Number(contentSafeArea.bottom || 0);
+  if (top > 0) document.documentElement.style.setProperty("--safe-t", `${top}px`);
+  if (bottom > 0) document.documentElement.style.setProperty("--safe-b", `${bottom}px`);
+}
+
+setViewportVars();
+window.addEventListener("resize", setViewportVars, { passive: true });
+window.addEventListener("orientationchange", () => setTimeout(setViewportVars, 120), { passive: true });
+tg?.onEvent?.("viewportChanged", setViewportVars);
+tg?.onEvent?.("safeAreaChanged", setViewportVars);
 
 // ══════════════════════════════════════════
 //  UTILS
@@ -1554,6 +1644,7 @@ const state = {
   readerMode: loadReaderMode(),
   readerFit: loadReaderFit(),
   readerControlsVisible: false,
+  readerFullscreen: false,
   readerCurrentPage: 1,
   readerUiTimer: null,
   readerAutoLoading: false,
@@ -1941,8 +2032,14 @@ function setPage(pageName) {
   // hide navbar in reader
   $$("bottomNav").style.display = pageName === "readerPage" ? "none" : "";
   document.body.classList.toggle("reader-active", pageName === "readerPage");
-  if (pageName !== "readerPage") stopReaderAutoScroll();
-  else if (state.readerAutoScroll) startReaderAutoScroll();
+  if (pageName !== "readerPage") {
+    stopReaderAutoScroll();
+    if (state.readerFullscreen) exitReaderFullscreen();
+    else setReaderFullscreenState(false);
+  } else {
+    setViewportVars();
+    if (state.readerAutoScroll) startReaderAutoScroll();
+  }
 
   // sync nav active state
   const tabMap = {
@@ -3754,6 +3851,68 @@ function toggleReaderAutoScroll() {
   setReaderControls(true);
 }
 
+function setReaderFullscreenState(active) {
+  state.readerFullscreen = Boolean(active);
+  document.body.classList.toggle("reader-css-fullscreen", state.readerFullscreen);
+  if ($$("readerFullscreenBtn")) {
+    $$("readerFullscreenBtn").classList.toggle("active", state.readerFullscreen);
+    $$("readerFullscreenBtn").title = state.readerFullscreen ? "Sair da tela cheia" : "Tela cheia";
+    $$("readerFullscreenBtn").setAttribute("aria-label", state.readerFullscreen ? "Sair da tela cheia" : "Tela cheia");
+  }
+  setViewportVars();
+}
+
+async function enterReaderFullscreen() {
+  const target = $$("readerPage") || document.documentElement;
+  try {
+    if (tg?.requestFullscreen) {
+      tg.requestFullscreen();
+      setReaderFullscreenState(true);
+      return;
+    }
+  } catch (_) {}
+  try {
+    if (target.requestFullscreen) {
+      await target.requestFullscreen();
+      setReaderFullscreenState(true);
+      return;
+    }
+    if (target.webkitRequestFullscreen) {
+      target.webkitRequestFullscreen();
+      setReaderFullscreenState(true);
+      return;
+    }
+  } catch (_) {}
+  setReaderFullscreenState(true);
+}
+
+async function exitReaderFullscreen() {
+  try {
+    if (tg?.exitFullscreen) tg.exitFullscreen();
+  } catch (_) {}
+  try {
+    if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
+    else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+  } catch (_) {}
+  setReaderFullscreenState(false);
+}
+
+function toggleReaderFullscreen() {
+  if (state.readerFullscreen || document.fullscreenElement || document.webkitFullscreenElement) {
+    exitReaderFullscreen();
+  } else {
+    enterReaderFullscreen();
+  }
+  setReaderControls(true);
+}
+
+document.addEventListener("fullscreenchange", () => {
+  if (state.currentPage === "readerPage") setReaderFullscreenState(Boolean(document.fullscreenElement));
+});
+document.addEventListener("webkitfullscreenchange", () => {
+  if (state.currentPage === "readerPage") setReaderFullscreenState(Boolean(document.webkitFullscreenElement));
+});
+
 function attachReaderControls(payload, pages) {
   state.currentReaderPayload = payload;
   const total = Math.max(1, pages.length);
@@ -3770,6 +3929,7 @@ function attachReaderControls(payload, pages) {
   $$("readerModeBtn").onclick = openReaderModeDialog;
   $$("readerSettingsBtn").onclick = openReaderSettings;
   $$("readerOpenSettings").onclick = openReaderSettings;
+  if ($$("readerFullscreenBtn")) $$("readerFullscreenBtn").onclick = toggleReaderFullscreen;
   $$("readerSheetMode").onclick = () => { closeReaderSettings(); openReaderModeDialog(); };
   $$("readerSheetFit").onclick = toggleReaderFit;
   $$("readerSheetAuto").onclick = toggleReaderAutoScroll;
@@ -3993,6 +4153,7 @@ function renderChapter(payload, options = {}) {
           <button class="reader-tool-btn" id="readerBookmarkBtn" title="Salvar página"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
           <button class="reader-tool-btn" id="readerModeBtn" title="Modo de leitura"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></button>
           <button class="reader-tool-btn ${state.readerFit === "height" ? "active" : ""}" id="readerFitBtn" title="Ajuste da página"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12h16M12 4v16"/><path d="m8 8-4 4 4 4M16 8l4 4-4 4"/></svg></button>
+          <button class="reader-tool-btn" id="readerFullscreenBtn" title="Tela cheia" aria-label="Tela cheia"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
           <button class="reader-tool-btn" id="readerSettingsBtn" title="Configuracoes"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg></button>
         </div>
       </div>
