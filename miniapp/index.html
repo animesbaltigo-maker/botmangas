@@ -1543,10 +1543,31 @@
 // ══════════════════════════════════════════
 const tg = window.Telegram?.WebApp;
 try { if (tg?.initData) sessionStorage.setItem("telegramInitData", tg.initData); } catch (_) {}
+
+function requestTelegramFullscreen() {
+  try { tg?.expand?.(); } catch (_) {}
+  try {
+    if (tg?.requestFullscreen && !tg?.isFullscreen) {
+      tg.requestFullscreen();
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
 tg?.ready();
-tg?.expand();
 tg?.setBackgroundColor?.("#000000");
 tg?.setHeaderColor?.("#000000");
+requestTelegramFullscreen();
+
+let telegramFullscreenRetryDone = false;
+function retryTelegramFullscreenOnce() {
+  if (telegramFullscreenRetryDone || tg?.isFullscreen) return;
+  telegramFullscreenRetryDone = true;
+  requestTelegramFullscreen();
+}
+window.addEventListener("pointerdown", retryTelegramFullscreenOnce, { once: true, passive: true });
+window.addEventListener("click", retryTelegramFullscreenOnce, { once: true, passive: true });
 
 function setViewportVars() {
   const vh = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0) * 0.01;
@@ -1561,7 +1582,10 @@ function setViewportVars() {
 setViewportVars();
 window.addEventListener("resize", setViewportVars, { passive: true });
 window.addEventListener("orientationchange", () => setTimeout(setViewportVars, 120), { passive: true });
-tg?.onEvent?.("viewportChanged", setViewportVars);
+tg?.onEvent?.("viewportChanged", () => {
+  setViewportVars();
+  requestTelegramFullscreen();
+});
 tg?.onEvent?.("safeAreaChanged", setViewportVars);
 
 // ══════════════════════════════════════════
@@ -3864,13 +3888,10 @@ function setReaderFullscreenState(active) {
 
 async function enterReaderFullscreen() {
   const target = $$("readerPage") || document.documentElement;
-  try {
-    if (tg?.requestFullscreen) {
-      tg.requestFullscreen();
-      setReaderFullscreenState(true);
-      return;
-    }
-  } catch (_) {}
+  if (requestTelegramFullscreen()) {
+    setReaderFullscreenState(true);
+    return;
+  }
   try {
     if (target.requestFullscreen) {
       await target.requestFullscreen();
