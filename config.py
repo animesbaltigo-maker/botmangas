@@ -82,6 +82,11 @@ def _env_bool(name: str, default: bool) -> bool:
     return default
 
 
+def _env_str_list(name: str, default: str) -> list[str]:
+    raw = os.getenv(name, default).replace(";", ",")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8719336176:AAGsY1XJ4yJqlM5wOIZdkDVImVzN6K6bEYw").strip()
 CATALOG_SITE_BASE = (
     os.getenv("CATALOG_SITE_BASE", "https://mangaball.net").strip()
@@ -89,7 +94,11 @@ CATALOG_SITE_BASE = (
 ).rstrip("/")
 
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@MangasBrasil").strip()
-REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "t.me/MangasBrasil").strip()
+REQUIRED_CHANNELS = _env_str_list(
+    "REQUIRED_CHANNELS",
+    "@AtualizacoesOn,@MangasBrasil,@QG_BALTIGO",
+)
+REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_FOLDER_URL", "https://t.me/addlist/-MQxRH0tNkE1ZjRh").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "MangasBaltigo_Bot").strip().lstrip("@")
 BOT_BRAND = os.getenv("BOT_BRAND", "Mangas Baltigo").strip()
 WEBAPP_BASE_URL = os.getenv("WEBAPP_BASE_URL", "").strip().rstrip("/")
