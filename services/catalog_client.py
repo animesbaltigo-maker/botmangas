@@ -2491,6 +2491,28 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
 
+    def _is_ptbr_or_unknown(value: Any) -> bool:
+        normalized = _clean(value).lower().replace("_", "-")
+        return normalized in {"", "pt-br", "ptbr", "pt"}
+
+    async def _genres_for_title(title_id: str) -> list[str]:
+        if not title_id:
+            return []
+
+        summary = get_cached_title_summary(title_id)
+        genres = []
+        if isinstance(summary, dict):
+            genres = summary.get("genres") or summary.get("anilist_genres") or []
+        if genres:
+            return list(genres)
+
+        try:
+            details = await asyncio.wait_for(get_title_details(title_id), timeout=10.0)
+        except Exception:
+            return []
+
+        return list(details.get("genres") or details.get("anilist_genres") or [])
+
     for page in range(1, max_pages + 1):
         raw_items = await get_title_search(
             "getRecentlyUpdatedChapter",
@@ -2503,11 +2525,47 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
         for item in raw_items:
             title_id = item.get("title_id") or ""
             title_url = item.get("url") or ""
+            direct_chapter_id = item.get("chapter_id") or ""
             recent_entries = item.get("recent_chapters") or []
+
+            if direct_chapter_id and _is_ptbr_or_unknown(item.get("language")):
+                chapter_number = item.get("latest_chapter") or item.get("chapter_number") or ""
+                key = f"{title_id}:{direct_chapter_id}" if title_id else direct_chapter_id
+                chapter_key = f"{title_id}:chapter:{chapter_number}" if title_id and chapter_number else ""
+                if key in seen or (chapter_key and chapter_key in seen):
+                    continue
+                seen.add(key)
+                if chapter_key:
+                    seen.add(chapter_key)
+
+                _remember_chapter_title(direct_chapter_id, title_id)
+                title = item.get("title") or item.get("display_title") or "Manga"
+
+                results.append(
+                    {
+                        "title_id": title_id,
+                        "title": title,
+                        "display_title": item.get("display_title") or title,
+                        "cover_url": item.get("cover_url") or "",
+                        "background_url": item.get("background_url") or item.get("cover_url") or "",
+                        "status": item.get("status") or "",
+                        "updated_at": item.get("updated_at") or "",
+                        "chapter_id": direct_chapter_id,
+                        "chapter_url": item.get("chapter_url") or "",
+                        "chapter_number": chapter_number,
+                        "language": item.get("language") or "pt-br",
+                        "genres": await _genres_for_title(title_id),
+                        "url": title_url,
+                    }
+                )
+
+                if len(results) >= target_limit:
+                    return results[:target_limit]
+
             pt_entries = [
                 entry
                 for entry in recent_entries
-                if _is_ptbr_language(entry.get("language"))
+                if _is_ptbr_or_unknown(entry.get("language"))
             ]
 
             if recent_entries and not pt_entries:
@@ -2528,16 +2586,15 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
                 _remember_chapter_title(chapter_id, title_id)
 
                 key = f"{title_id}:{chapter_id}" if title_id else chapter_id
-                if key in seen:
+                chapter_key = f"{title_id}:chapter:{chapter_number}" if title_id and chapter_number else ""
+                if key in seen or (chapter_key and chapter_key in seen):
                     continue
                 seen.add(key)
+                if chapter_key:
+                    seen.add(chapter_key)
 
                 title = item.get("title") or item.get("display_title") or "Manga"
                 display_title = item.get("display_title") or title
-                summary = get_cached_title_summary(title_id) if title_id else None
-                genres = []
-                if isinstance(summary, dict):
-                    genres = summary.get("genres") or summary.get("anilist_genres") or []
 
                 results.append(
                     {
@@ -2552,7 +2609,7 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
                         "chapter_url": chapter_url,
                         "chapter_number": chapter_number,
                         "language": "pt-br",
-                        "genres": genres,
+                        "genres": await _genres_for_title(title_id),
                         "url": title_url,
                     }
                 )

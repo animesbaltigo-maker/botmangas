@@ -14,6 +14,7 @@ from config import ADMIN_IDS, AUTO_POST_LIMIT, BOT_USERNAME, CANAL_POSTAGEM_CAPI
 from core.channel_target import ensure_channel_target
 from handlers.callbacks import _ALLOWED_TAG_TRANSLATIONS, _norm_tag_label
 from services.catalog_client import get_recent_chapters
+from services.manga_update_mockup import render_manga_update_mockup
 
 FORCED_CHANNEL_TARGET = CANAL_POSTAGEM_CAPITULOS or "@AtualizacoesOn"
 POSTED_JSON_PATH = Path(DATA_DIR) / "capitulos_postados.json"
@@ -78,11 +79,15 @@ def _genre_hashtags(item: dict, limit: int = 6) -> str:
         values = list(raw)
 
     output: list[str] = []
+    fallback: list[str] = []
     seen: set[str] = set()
     for value in values:
         if isinstance(value, dict):
             value = value.get("name") or value.get("label") or value.get("title") or ""
-        norm = _norm_tag_label(str(value).strip().lstrip("#"))
+        raw_label = str(value).strip().lstrip("#")
+        norm = _norm_tag_label(raw_label)
+        if raw_label and norm not in seen:
+            fallback.append(raw_label)
         translated = _ALLOWED_TAG_TRANSLATIONS.get(norm)
         if not translated or norm in seen:
             continue
@@ -92,6 +97,9 @@ def _genre_hashtags(item: dict, limit: int = 6) -> str:
             output.append(tag)
         if len(output) >= limit:
             break
+
+    if not output and fallback:
+        return ", ".join(fallback[:limit])
 
     return ", ".join(output) if output else "Não informado"
 
@@ -118,7 +126,7 @@ def _caption(item: dict) -> str:
 def _keyboard(item: dict) -> InlineKeyboardMarkup | None:
     title_id = str(item.get("title_id") or "").strip()
     if title_id:
-        return InlineKeyboardMarkup([[InlineKeyboardButton("📚 Ler obra", url=_title_link(title_id))]])
+        return InlineKeyboardMarkup([[InlineKeyboardButton("📚 Ler mangá", url=_title_link(title_id))]])
     return None
 
 
@@ -139,9 +147,10 @@ async def _send_recent_chapter(bot, chat_id, item: dict) -> None:
 
     if cover:
         try:
+            photo = await render_manga_update_mockup(cover)
             await bot.send_photo(
                 chat_id=chat_id,
-                photo=cover,
+                photo=photo,
                 caption=caption,
                 parse_mode="HTML",
                 reply_markup=keyboard,
