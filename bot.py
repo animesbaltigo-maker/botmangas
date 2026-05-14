@@ -7,6 +7,7 @@ from typing import Any
 from telegram import Update
 from telegram.ext import (
     Application,
+    ApplicationHandlerStop,
     CallbackQueryHandler,
     ChosenInlineResultHandler,
     CommandHandler,
@@ -51,6 +52,7 @@ from services.offline_access import init_offline_access_db
 from services.referral_db import init_referral_db
 from services.affiliate_db import init_affiliate_db, release_due_commissions
 from handlers.postmanga import postmanga, postallmangas
+from utils.gatekeeper import ensure_channel_membership
 
 init_metrics_db()
 init_referral_db()
@@ -174,6 +176,11 @@ async def affiliate_release_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         print("ERRO AFFILIATE RELEASE:", repr(error))
 
 
+async def required_channel_guard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await ensure_channel_membership(update, context):
+        raise ApplicationHandlerStop
+
+
 async def set_bot_commands_job(app: Application) -> None:
     try:
         await app.bot.set_my_commands(
@@ -267,6 +274,7 @@ def main() -> None:
     app.add_handler(CommandHandler("metricaslimpar", metricas_limpar))
     app.add_handler(CommandHandler("mperfil", mperfil))
     app.add_handler(TypeHandler(Update, update_probe, block=False), group=-100)
+    app.add_handler(MessageHandler(filters.COMMAND, required_channel_guard), group=-90)
     app.add_handler(InlineQueryHandler(inline_query))
     app.add_handler(ChosenInlineResultHandler(chosen_inline_result))
     app.add_handler(CommandHandler("postallmangas", postallmangas))

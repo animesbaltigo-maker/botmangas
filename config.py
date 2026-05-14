@@ -83,7 +83,8 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _env_str_list(name: str, default: str) -> list[str]:
-    raw = os.getenv(name, default).replace(";", ",")
+    raw = os.getenv(name, "").strip() or default
+    raw = raw.replace(";", ",")
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
