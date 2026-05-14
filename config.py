@@ -99,7 +99,7 @@ REQUIRED_CHANNELS = _env_str_list(
     "REQUIRED_CHANNELS",
     "@AtualizacoesOn,@MangasBrasil,@QG_BALTIGO",
 )
-REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_FOLDER_URL", "https://t.me/addlist/-MQxRH0tNkE1ZjRh").strip()
+REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/MangasBrasil").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "MangasBaltigo_Bot").strip().lstrip("@")
 BOT_BRAND = os.getenv("BOT_BRAND", "Mangas Baltigo").strip()
 WEBAPP_BASE_URL = os.getenv("WEBAPP_BASE_URL", "").strip().rstrip("/")
