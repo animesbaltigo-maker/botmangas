@@ -1927,9 +1927,13 @@ async def get_chapter_list_fast(title_id: str, lang: str | None = None) -> dict[
     return result
 
 
-def flatten_chapters(chapter_payload: dict[str, Any], preferred_lang: str | None = None, *, ascending: bool = False) -> list[dict[str, Any]]:
+def flatten_chapters(chapter_payload: dict[str, Any] | list[Any], preferred_lang: str | None = None, *, ascending: bool = False) -> list[dict[str, Any]]:
     preferred_lang = _clean(preferred_lang).lower() or PREFERRED_CHAPTER_LANG
     items: list[dict[str, Any]] = []
+    if isinstance(chapter_payload, list):
+        chapter_payload = {"chapters": chapter_payload}
+    if not isinstance(chapter_payload, dict):
+        return items
     payload_title_id = _extract_title_id(chapter_payload.get("title_id")) or _clean(chapter_payload.get("title_id"))
 
     chapters = list(chapter_payload.get("chapters") or [])
