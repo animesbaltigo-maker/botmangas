@@ -52,6 +52,7 @@ from services.catalog_client import (
     get_cached_title_bundle,
     get_cached_title_summary,
     get_chapter_reader_payload,
+    get_chapter_list,
     get_home_payload,
     get_origin_titles,
     get_recent_chapter_updates,
@@ -523,8 +524,8 @@ async def _check_title_notification(key: str, entry: dict[str, Any], data: dict[
     if not user_id or not title_id:
         return
     try:
-        bundle = await asyncio.wait_for(get_title_bundle(title_id, language), timeout=25.0)
-        latest = _latest_chapter_from_bundle(bundle, language)
+        payload = await asyncio.wait_for(get_chapter_list(title_id, language), timeout=18.0)
+        latest = _latest_chapter_from_bundle(payload, language)
     except Exception as error:
         print("[WEBAPP][NOTIFICATION_CHECK_FAIL]", title_id, repr(error))
         return
@@ -534,9 +535,10 @@ async def _check_title_notification(key: str, entry: dict[str, Any], data: dict[
         return
     previous_id = entry.get("latest_chapter_id") or ""
     last_notified = entry.get("last_notified_chapter_id") or ""
-    entry["title"] = entry.get("title") or bundle.get("title") or ""
+    cached = get_cached_title_summary(title_id) or get_cached_title_bundle(title_id, language) or {}
+    entry["title"] = entry.get("title") or cached.get("title") or cached.get("display_title") or ""
     entry["latest_chapter"] = latest_number
-    entry["chapter_count"] = len(flatten_chapters(bundle.get("chapters") or [], language))
+    entry["chapter_count"] = len(flatten_chapters(payload.get("chapters") or [], language))
     if previous_id and latest_id != previous_id and latest_id != last_notified:
         await _send_chapter_notification(user_id, entry, latest)
         entry["last_notified_chapter_id"] = latest_id

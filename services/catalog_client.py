@@ -66,6 +66,8 @@ DEFAULT_CATALOG_USER_AGENT = (
 )
 
 _HTTP_SEMAPHORE = asyncio.Semaphore(24)
+_SOURCE_REQUEST_LOCK = asyncio.Lock()
+_SOURCE_LAST_REQUEST_AT = 0.0
 
 _CACHE: dict[str, dict[str, Any]] = {}
 _INFLIGHT: dict[str, asyncio.Task] = {}
@@ -93,6 +95,10 @@ LOCAL_SEARCH_SEED_TTL = 300
 FORM_QUICK_TIMEOUT = httpx.Timeout(5.5, connect=4.0, read=5.5, write=5.5, pool=5.5)
 CHAPTER_LIST_QUICK_TIMEOUT = 4.2
 CHAPTER_LIST_CACHED_TIMEOUT = httpx.Timeout(2.8, connect=2.0, read=2.8, write=2.8, pool=2.8)
+try:
+    SOURCE_MIN_INTERVAL_SECONDS = max(0.0, float(os.getenv("CATALOG_SOURCE_MIN_INTERVAL", "1.25") or 1.25))
+except ValueError:
+    SOURCE_MIN_INTERVAL_SECONDS = 1.25
 
 SEARCH_TTL = min(max(API_CACHE_TTL_SECONDS, 180), 1800)
 HOME_TTL = min(max(API_CACHE_TTL_SECONDS, 300), 1800)
@@ -325,6 +331,27 @@ def _absolute_url(value: Any) -> str:
         parsed = parsed._replace(scheme="https", netloc=base.netloc)
         return urlunparse(parsed)
     return absolute
+
+
+def _is_source_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        base = urlparse(BASE_URL)
+    except ValueError:
+        return False
+    return bool(parsed.hostname and base.hostname and parsed.hostname == base.hostname)
+
+
+async def _source_request_gate(url: str) -> None:
+    global _SOURCE_LAST_REQUEST_AT
+    if not _is_source_url(url) or SOURCE_MIN_INTERVAL_SECONDS <= 0:
+        return
+    async with _SOURCE_REQUEST_LOCK:
+        now = time.monotonic()
+        wait_for = SOURCE_MIN_INTERVAL_SECONDS - (now - _SOURCE_LAST_REQUEST_AT)
+        if wait_for > 0:
+            await asyncio.sleep(wait_for)
+        _SOURCE_LAST_REQUEST_AT = time.monotonic()
 
 
 def _normalize_text(value: str) -> str:
@@ -1429,6 +1456,7 @@ async def _request_text(url: str, *, headers: dict[str, str] | None = None) -> s
 
     for attempt in range(3):
         try:
+            await _source_request_gate(url)
             async with _HTTP_SEMAPHORE:
                 response = await client.get(url, headers=headers)
             response.raise_for_status()
@@ -1444,6 +1472,7 @@ async def _request_text_fast(url: str, *, headers: dict[str, str] | None = None)
     client = await get_http_client()
     headers = _merge_source_headers(headers)
 
+    await _source_request_gate(url)
     async with _HTTP_SEMAPHORE:
         response = await client.get(url, headers=headers, timeout=FORM_QUICK_TIMEOUT)
 
@@ -1476,6 +1505,7 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
 
     for attempt in range(3):
         try:
+            await _source_request_gate(url)
             async with _HTTP_SEMAPHORE:
                 response = await client.post(
                     url,
@@ -1489,12 +1519,13 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
                     request=response.request,
                     response=response,
                 )
-                try:
-                    browser_session = await _ensure_browser_session(force_refresh=True)
-                    headers = await _build_ajax_headers(browser_session, referer)
-                    cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
-                except Exception as error:
-                    browser_error = error
+                if not CATALOG_COOKIE_HEADER:
+                    try:
+                        browser_session = await _ensure_browser_session(force_refresh=True)
+                        headers = await _build_ajax_headers(browser_session, referer)
+                        cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
+                    except Exception as error:
+                        browser_error = error
                 await asyncio.sleep(0.35 * (attempt + 1))
                 continue
             response.raise_for_status()
@@ -1503,16 +1534,17 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
             last_error = error
             if isinstance(error, httpx.HTTPStatusError) and error.response is not None:
                 if error.response.status_code in (401, 403):
-                    try:
-                        browser_session = await _ensure_browser_session(force_refresh=True)
-                        headers = await _build_ajax_headers(browser_session, referer)
-                        cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
-                    except Exception as browser_refresh_error:
-                        browser_error = browser_refresh_error
+                    if not CATALOG_COOKIE_HEADER:
+                        try:
+                            browser_session = await _ensure_browser_session(force_refresh=True)
+                            headers = await _build_ajax_headers(browser_session, referer)
+                            cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
+                        except Exception as browser_refresh_error:
+                            browser_error = browser_refresh_error
             await asyncio.sleep(0.35 * (attempt + 1))
 
     if isinstance(last_error, httpx.HTTPStatusError) and last_error.response is not None:
-        if last_error.response.status_code in (401, 403):
+        if last_error.response.status_code in (401, 403) and not CATALOG_COOKIE_HEADER:
             try:
                 return await _request_form_json_via_playwright(path, data, referer)
             except Exception as error:
@@ -1539,6 +1571,7 @@ async def _request_form_json_quick(path: str, data: dict[str, Any]) -> dict[str,
 
     for attempt in range(2):
         try:
+            await _source_request_gate(url)
             async with _HTTP_SEMAPHORE:
                 response = await client.post(
                     url,
@@ -1584,6 +1617,7 @@ async def _request_form_json_cached_quick(path: str, data: dict[str, Any]) -> di
     if CATALOG_USER_AGENT:
         headers["User-Agent"] = CATALOG_USER_AGENT
 
+    await _source_request_gate(url)
     async with _HTTP_SEMAPHORE:
         response = await client.post(
             url,
