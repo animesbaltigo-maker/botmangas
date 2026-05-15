@@ -9,7 +9,7 @@ import unicodedata
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -44,7 +44,9 @@ except Exception:  # pragma: no cover - optional runtime dependency
 from config import (
     API_CACHE_TTL_SECONDS,
     AUTO_POST_LIMIT,
+    CATALOG_COOKIE_HEADER,
     CATALOG_SITE_BASE,
+    CATALOG_USER_AGENT,
     DATA_DIR,
     HOME_SECTION_LIMIT,
     PREFERRED_CHAPTER_LANG,
@@ -56,6 +58,12 @@ from services.anilist_client import enrich_title_metadata
 from services.metrics import get_search_seed_titles
 
 BASE_URL = CATALOG_SITE_BASE.rstrip("/")
+DEFAULT_CATALOG_USER_AGENT = (
+    CATALOG_USER_AGENT
+    or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
 
 _HTTP_SEMAPHORE = asyncio.Semaphore(24)
 
@@ -178,6 +186,63 @@ def _playwright_launch_kwargs() -> dict[str, Any]:
     if executable_path:
         return {"headless": True, "executable_path": executable_path}
     return {"headless": True, "channel": "chromium"}
+
+
+def _manual_cookie_dict() -> dict[str, str]:
+    cookies: dict[str, str] = {}
+    for chunk in CATALOG_COOKIE_HEADER.split(";"):
+        if "=" not in chunk:
+            continue
+        name, value = chunk.split("=", 1)
+        name = _clean(name)
+        value = _clean(value)
+        if name and value:
+            cookies[name] = value
+    return cookies
+
+
+def _merge_source_headers(headers: dict[str, str] | None = None) -> dict[str, str] | None:
+    if not CATALOG_COOKIE_HEADER:
+        return headers
+    merged = dict(headers or {})
+    merged.setdefault("Cookie", CATALOG_COOKIE_HEADER)
+    return merged
+
+
+async def _seed_playwright_context(context) -> None:
+    cookies = _manual_cookie_dict()
+    if not cookies:
+        return
+    parsed = urlparse(BASE_URL)
+    domain = parsed.hostname or ""
+    if not domain:
+        return
+    await context.add_cookies(
+        [
+            {
+                "name": name,
+                "value": value,
+                "domain": domain,
+                "path": "/",
+                "httpOnly": False,
+                "secure": parsed.scheme == "https",
+                "sameSite": "Lax",
+            }
+            for name, value in cookies.items()
+        ]
+    )
+
+
+async def _page_csrf_token(page) -> str:
+    try:
+        return _clean(
+            await page.evaluate(
+                "() => document.querySelector('meta[name=\"csrf-token\"]')"
+                "?.getAttribute('content') || ''"
+            )
+        )
+    except Exception:
+        return ""
 
 
 def clear_catalog_cache() -> None:
@@ -824,18 +889,25 @@ async def _prepare_playwright_page(context, page) -> None:
     except Exception:
         pass
 
-    await page.goto(
-        f"{BASE_URL}/",
-        wait_until="domcontentloaded",
-        timeout=PLAYWRIGHT_NAV_TIMEOUT,
-    )
+    navigation_error: Exception | None = None
+    try:
+        await page.goto(
+            f"{BASE_URL}/",
+            wait_until="domcontentloaded",
+            timeout=PLAYWRIGHT_NAV_TIMEOUT,
+        )
+    except Exception as error:
+        navigation_error = error
 
     deadline = time.monotonic() + (PLAYWRIGHT_META_TIMEOUT / 1000)
     while time.monotonic() < deadline:
-        token = _clean(await page.locator("meta[name='csrf-token']").get_attribute("content"))
+        token = await _page_csrf_token(page)
         if token:
             return
         await page.wait_for_timeout(100)
+
+    if navigation_error:
+        raise RuntimeError(f"Falha ao abrir a fonte pelo navegador: {navigation_error!r}") from navigation_error
 
 
 async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]:
@@ -864,17 +936,14 @@ async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]
             browser = await playwright.chromium.launch(**_playwright_launch_kwargs())
             try:
                 context = await browser.new_context(
-                    user_agent=(
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/124.0.0.0 Safari/537.36"
-                    ),
+                    user_agent=DEFAULT_CATALOG_USER_AGENT,
                     locale="pt-BR",
                 )
+                await _seed_playwright_context(context)
                 page = await context.new_page()
                 await _prepare_playwright_page(context, page)
 
-                csrf_token = _clean(await page.locator("meta[name='csrf-token']").get_attribute("content"))
+                csrf_token = await _page_csrf_token(page)
                 cookies = {
                     _clean(item.get("name")): _clean(item.get("value"))
                     for item in (await context.cookies())
@@ -919,13 +988,16 @@ async def _build_ajax_headers(
         csrf_token = await get_csrf_token(allow_browser=allow_browser_token)
 
     referer = _absolute_url(referer) or f"{BASE_URL}/"
-    return {
+    headers = {
         "Accept": "application/json,text/plain,*/*",
         "X-CSRF-TOKEN": csrf_token,
         "X-Requested-With": "XMLHttpRequest",
         "Referer": referer,
         "Origin": BASE_URL,
     }
+    if CATALOG_COOKIE_HEADER:
+        headers["Cookie"] = CATALOG_COOKIE_HEADER
+    return headers
 
 
 async def _request_form_json_via_playwright(path: str, data: dict[str, Any], referer: str) -> dict[str, Any]:
@@ -942,18 +1014,15 @@ async def _request_form_json_via_playwright(path: str, data: dict[str, Any], ref
         browser = await playwright.chromium.launch(**_playwright_launch_kwargs())
         try:
             context = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
+                user_agent=DEFAULT_CATALOG_USER_AGENT,
                 locale="pt-BR",
             )
+            await _seed_playwright_context(context)
             page = await context.new_page()
             await _prepare_playwright_page(context, page)
             headers = await _build_ajax_headers(
                 {
-                    "csrf_token": _clean(await page.locator("meta[name='csrf-token']").get_attribute("content")),
+                    "csrf_token": await _page_csrf_token(page),
                 },
                 referer,
             )
@@ -1345,6 +1414,7 @@ def _normalize_chapter_groups(raw_groups: list[dict[str, Any]], preferred_lang: 
 async def _request_text(url: str, *, headers: dict[str, str] | None = None) -> str:
     client = await get_http_client()
     last_error: Exception | None = None
+    headers = _merge_source_headers(headers)
 
     for attempt in range(3):
         try:
@@ -1361,6 +1431,7 @@ async def _request_text(url: str, *, headers: dict[str, str] | None = None) -> s
 
 async def _request_text_fast(url: str, *, headers: dict[str, str] | None = None) -> str:
     client = await get_http_client()
+    headers = _merge_source_headers(headers)
 
     async with _HTTP_SEMAPHORE:
         response = await client.get(url, headers=headers, timeout=FORM_QUICK_TIMEOUT)
@@ -1390,7 +1461,7 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
         referer,
         allow_browser_token=bool(browser_session),
     )
-    cookies = dict((browser_session or {}).get("cookies") or {})
+    cookies = {**_manual_cookie_dict(), **dict((browser_session or {}).get("cookies") or {})}
 
     for attempt in range(3):
         try:
@@ -1410,7 +1481,7 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
                 try:
                     browser_session = await _ensure_browser_session(force_refresh=True)
                     headers = await _build_ajax_headers(browser_session, referer)
-                    cookies = dict(browser_session.get("cookies") or {})
+                    cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
                 except Exception as error:
                     browser_error = error
                 await asyncio.sleep(0.35 * (attempt + 1))
@@ -1424,7 +1495,7 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
                     try:
                         browser_session = await _ensure_browser_session(force_refresh=True)
                         headers = await _build_ajax_headers(browser_session, referer)
-                        cookies = dict(browser_session.get("cookies") or {})
+                        cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
                     except Exception as browser_refresh_error:
                         browser_error = browser_refresh_error
             await asyncio.sleep(0.35 * (attempt + 1))
@@ -1485,7 +1556,9 @@ async def _request_form_json_cached_quick(path: str, data: dict[str, Any]) -> di
         csrf_token = _clean(_CSRF_TOKEN["value"])
     elif _browser_session_is_valid():
         csrf_token = _clean(_BROWSER_SESSION.get("csrf_token"))
-        cookies = dict(_BROWSER_SESSION.get("cookies") or {})
+        cookies = {**_manual_cookie_dict(), **dict(_BROWSER_SESSION.get("cookies") or {})}
+    else:
+        cookies = _manual_cookie_dict()
 
     headers = {
         "Accept": "application/json,text/plain,*/*",
@@ -1495,6 +1568,8 @@ async def _request_form_json_cached_quick(path: str, data: dict[str, Any]) -> di
     }
     if csrf_token:
         headers["X-CSRF-TOKEN"] = csrf_token
+    if CATALOG_COOKIE_HEADER:
+        headers["Cookie"] = CATALOG_COOKIE_HEADER
 
     async with _HTTP_SEMAPHORE:
         response = await client.post(

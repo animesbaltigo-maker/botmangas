@@ -93,6 +93,8 @@ CATALOG_SITE_BASE = (
     os.getenv("CATALOG_SITE_BASE", "https://mangaball.net").strip()
     or os.getenv("SOURCE_SITE_BASE", "https://mangaball.net").strip()
 ).rstrip("/")
+CATALOG_COOKIE_HEADER = os.getenv("CATALOG_COOKIE_HEADER", "").strip()
+CATALOG_USER_AGENT = os.getenv("CATALOG_USER_AGENT", "").strip()
 
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@MangasBrasil").strip()
 REQUIRED_CHANNELS = _env_str_list(
