@@ -202,10 +202,13 @@ def _manual_cookie_dict() -> dict[str, str]:
 
 
 def _merge_source_headers(headers: dict[str, str] | None = None) -> dict[str, str] | None:
-    if not CATALOG_COOKIE_HEADER:
+    if not CATALOG_COOKIE_HEADER and not CATALOG_USER_AGENT:
         return headers
     merged = dict(headers or {})
-    merged.setdefault("Cookie", CATALOG_COOKIE_HEADER)
+    if CATALOG_COOKIE_HEADER:
+        merged.setdefault("Cookie", CATALOG_COOKIE_HEADER)
+    if CATALOG_USER_AGENT:
+        merged["User-Agent"] = CATALOG_USER_AGENT
     return merged
 
 
@@ -1003,6 +1006,8 @@ async def _build_ajax_headers(
     }
     if CATALOG_COOKIE_HEADER:
         headers["Cookie"] = CATALOG_COOKIE_HEADER
+    if CATALOG_USER_AGENT:
+        headers["User-Agent"] = CATALOG_USER_AGENT
     return headers
 
 
@@ -1576,6 +1581,8 @@ async def _request_form_json_cached_quick(path: str, data: dict[str, Any]) -> di
         headers["X-CSRF-TOKEN"] = csrf_token
     if CATALOG_COOKIE_HEADER:
         headers["Cookie"] = CATALOG_COOKIE_HEADER
+    if CATALOG_USER_AGENT:
+        headers["User-Agent"] = CATALOG_USER_AGENT
 
     async with _HTTP_SEMAPHORE:
         response = await client.post(
