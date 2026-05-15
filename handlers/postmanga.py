@@ -73,6 +73,8 @@ CATALOG_SITE_BASE = os.getenv("CATALOG_SITE_BASE", "https://mangaball.net").rstr
 POSTED_MANGAS_FILE = Path("data/mangas_postados.json")
 POSTMANGA_POPULAR_LOG_FILE = Path("data/postmanga_popular_log.json")
 BULK_DELAY_SECONDS = float(os.getenv("MANGA_BULK_DELAY_SECONDS", "30"))
+POSTALL_DELAY_SECONDS = max(BULK_DELAY_SECONDS, float(os.getenv("POSTALLMANGAS_DELAY_SECONDS", "90")))
+POSTALL_MAX_LIMIT = max(1, int(os.getenv("POSTALLMANGAS_MAX_LIMIT", "25")))
 BULK_HTTP_TIMEOUT = 25.0
 POPULAR_SCAN_LIMIT = int(os.getenv("POSTMANGA_POPULAR_SCAN_LIMIT", "1000"))
 POSTALL_ADVANCED_PAGE_SIZE = int(os.getenv("POSTALL_ADVANCED_PAGE_SIZE", "24"))
@@ -929,24 +931,16 @@ async def _resolve_valid_postall_payload(ref: dict) -> tuple[dict | None, str]:
     if not title_id:
         return None, "sem_id"
 
-    overview = get_cached_title_overview(title_id)
-    if overview is None:
-        try:
-            overview = await get_title_overview(title_id)
-        except Exception:
-            overview = {}
+    payload = _merge_post_payload({}, ref, None)
+    latest = _latest_chapter_summary(payload)
+    if latest:
+        payload["latest_chapter"] = latest
+        payload.setdefault("chapter_count", 1)
 
-    bundle = get_cached_title_bundle(title_id)
-    if bundle is None:
-        try:
-            bundle = await asyncio.wait_for(get_title_bundle(title_id), timeout=12.0)
-        except Exception:
-            bundle = None
+    if not _post_photo_url(payload):
+        return None, "sem_imagem"
 
-    if not _has_portuguese_chapter(bundle, title_id):
-        return None, "sem_capitulo_pt_br"
-
-    return _merge_post_payload(overview or {}, ref, bundle), ""
+    return payload, ""
 
 
 def _reason_label(reason: str) -> str:
@@ -1111,7 +1105,7 @@ async def _run_postallmangas(
                 "🚀 <b>Postagem em lote iniciada.</b>\n\n"
                 f"<b>Fonte:</b> <code>Search Advanced / {html.escape(PREFERRED_CHAPTER_LANG or 'pt-br')}</code>\n"
                 f"<b>Pendentes encontrados:</b> <code>{len(refs)}</code>\n"
-                f"<b>Intervalo:</b> <code>{int(BULK_DELAY_SECONDS)}s</code>"
+                f"<b>Intervalo:</b> <code>{int(POSTALL_DELAY_SECONDS)}s</code>"
             ),
             parse_mode="HTML",
             reply_to_message_id=reply_to_message_id,
@@ -1163,7 +1157,7 @@ async def _run_postallmangas(
             )
 
             if index < total:
-                await asyncio.sleep(BULK_DELAY_SECONDS)
+                await asyncio.sleep(POSTALL_DELAY_SECONDS)
 
         await _safe_edit_status(
             status_message,
@@ -1307,39 +1301,52 @@ async def postallmangas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not _is_admin(user_id):
         await message.reply_text(
-            "❌ <b>Você não tem permissão para usar este comando.</b>",
+            "<b>Voce nao tem permissao para usar este comando.</b>",
             parse_mode="HTML",
         )
         return
 
     if _bulk_running(context):
         await message.reply_text(
-            "⏳ <b>Já existe uma postagem em lote rodando agora.</b>",
+            "<b>Ja existe uma postagem em lote rodando agora.</b>",
             parse_mode="HTML",
         )
         return
 
-    limit: int | None = None
-    if context.args:
-        raw = str(context.args[0]).strip()
-        if not raw.isdigit():
-            await message.reply_text(
-                "❌ <b>Quantidade inválida.</b>\n\n"
-                "Use:\n"
-                "<code>/postallmangas</code>\n"
-                "ou\n"
-                "<code>/postallmangas 100</code>",
-                parse_mode="HTML",
-            )
-            return
+    if not context.args:
+        await message.reply_text(
+            "<b>Postagem em massa protegida.</b>\n\n"
+            "Para nao derrubar a sessao do Mangaball, esse comando agora exige quantidade.\n\n"
+            "Use: <code>/postallmangas 5</code>\n"
+            f"Limite por rodada: <code>{POSTALL_MAX_LIMIT}</code>\n"
+            f"Intervalo entre posts: <code>{int(POSTALL_DELAY_SECONDS)}s</code>",
+            parse_mode="HTML",
+        )
+        return
 
-        limit = int(raw)
-        if limit <= 0:
-            await message.reply_text(
-                "❌ <b>A quantidade precisa ser maior que zero.</b>",
-                parse_mode="HTML",
-            )
-            return
+    raw = str(context.args[0]).strip()
+    if not raw.isdigit():
+        await message.reply_text(
+            "<b>Quantidade invalida.</b>\n\n"
+            "Use: <code>/postallmangas 5</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    limit = int(raw)
+    if limit <= 0:
+        await message.reply_text(
+            "<b>A quantidade precisa ser maior que zero.</b>",
+            parse_mode="HTML",
+        )
+        return
+    if limit > POSTALL_MAX_LIMIT:
+        await message.reply_text(
+            "<b>Quantidade alta demais.</b>\n\n"
+            f"Para proteger o bot e o cookie do Cloudflare, o maximo por rodada e <code>{POSTALL_MAX_LIMIT}</code>.",
+            parse_mode="HTML",
+        )
+        return
 
     task = context.application.create_task(
         _run_postallmangas(
@@ -1351,15 +1358,9 @@ async def postallmangas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.application.bot_data[BOTDATA_BULK_TASK_KEY] = task
 
-    if limit is None:
-        await message.reply_text(
-            "🚀 <b>Fila de postagem em lote iniciada.</b>\n\n"
-            "Vou começar a postar os mangás pendentes agora.",
-            parse_mode="HTML",
-        )
-    else:
-        await message.reply_text(
-            "🚀 <b>Fila de postagem em lote iniciada.</b>\n\n"
-            f"Vou postar <code>{limit}</code> mangás pendentes agora.",
-            parse_mode="HTML",
-        )
+    await message.reply_text(
+        "<b>Fila de postagem protegida iniciada.</b>\n\n"
+        f"Vou postar ate <code>{limit}</code> mangas pendentes.\n"
+        f"Intervalo entre posts: <code>{int(POSTALL_DELAY_SECONDS)}s</code>.",
+        parse_mode="HTML",
+    )
