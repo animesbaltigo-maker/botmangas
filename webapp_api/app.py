@@ -2235,7 +2235,12 @@ async def add_perf_headers(request: Request, call_next):
             if key.lower() not in {b"if-none-match", b"if-modified-since"}
         ]
 
-    response: Response = await call_next(request)
+    try:
+        response: Response = await call_next(request)
+    except RuntimeError as error:
+        if str(error) == "No response returned.":
+            return Response(status_code=204)
+        raise
     elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
     response.headers["X-Response-Time"] = f"{elapsed_ms}ms"
     if no_cache_index:
