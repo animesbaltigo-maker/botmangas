@@ -9,7 +9,7 @@ import unicodedata
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -315,7 +315,13 @@ def _absolute_url(value: Any) -> str:
     text = _clean(value)
     if not text:
         return ""
-    return urljoin(f"{BASE_URL}/", text)
+    absolute = urljoin(f"{BASE_URL}/", text)
+    parsed = urlparse(absolute)
+    base = urlparse(BASE_URL)
+    if base.scheme == "https" and parsed.scheme == "http" and parsed.hostname == base.hostname:
+        parsed = parsed._replace(scheme="https", netloc=base.netloc)
+        return urlunparse(parsed)
+    return absolute
 
 
 def _normalize_text(value: str) -> str:
