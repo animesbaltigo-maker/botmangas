@@ -987,7 +987,7 @@ async def _title_payload(title_id: str, lang: str, user_id: str = "") -> dict[st
         try:
             snapshot = await asyncio.wait_for(
                 get_title_chapters_snapshot(title_id, lang),
-                timeout=min(_TITLE_OPEN_TIMEOUT, 4.5),
+                timeout=min(_TITLE_OPEN_TIMEOUT, 8.0),
             )
             if snapshot.get("chapters"):
                 refresh_full_bundle()

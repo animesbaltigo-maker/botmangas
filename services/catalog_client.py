@@ -811,10 +811,13 @@ def _browser_session_snapshot() -> dict[str, Any] | None:
 
 async def _prepare_playwright_page(context, page) -> None:
     async def _route(route):
-        if route.request.resource_type in {"image", "media", "font", "stylesheet"}:
-            await route.abort()
+        try:
+            if route.request.resource_type in {"image", "media", "font", "stylesheet"}:
+                await route.abort()
+                return
+            await route.continue_()
+        except Exception:
             return
-        await route.continue_()
 
     try:
         await context.route("**/*", _route)
@@ -827,10 +830,12 @@ async def _prepare_playwright_page(context, page) -> None:
         timeout=PLAYWRIGHT_NAV_TIMEOUT,
     )
 
-    try:
-        await page.locator("meta[name='csrf-token']").wait_for(timeout=PLAYWRIGHT_META_TIMEOUT)
-    except Exception:
-        pass
+    deadline = time.monotonic() + (PLAYWRIGHT_META_TIMEOUT / 1000)
+    while time.monotonic() < deadline:
+        token = _clean(await page.locator("meta[name='csrf-token']").get_attribute("content"))
+        if token:
+            return
+        await page.wait_for_timeout(100)
 
 
 async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]:
@@ -876,7 +881,10 @@ async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]
                     if _clean(item.get("name")) and _clean(item.get("value"))
                 }
             finally:
-                await browser.close()
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
 
         if not csrf_token or not cookies:
             raise RuntimeError("Nao foi possivel obter a sessao protegida da fonte.")
@@ -957,7 +965,10 @@ async def _request_form_json_via_playwright(path: str, data: dict[str, Any], ref
             )
             response_text = await response.text()
         finally:
-            await browser.close()
+            try:
+                await browser.close()
+            except Exception:
+                pass
 
     if response.status != 200:
         raise RuntimeError(f"Playwright recebeu HTTP {response.status} ao consultar {url}.")
