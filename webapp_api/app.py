@@ -2092,7 +2092,6 @@ async def api_save_progress(request: Request, payload: ProgressPayload):
         chapter_url=payload.chapter_url,
     )
 
-    await _invalidate_prefix("cache")
     return {"ok": True}
 
 

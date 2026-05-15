@@ -167,6 +167,7 @@ PDF_BULK_MAX_CHAPTERS = _env_int("PDF_BULK_MAX_CHAPTERS", 0)
 PDF_BULK_DELAY_SECONDS = _env_float("PDF_BULK_DELAY_SECONDS", 0.2)
 PDF_BULK_SUBSCRIBE_URL = os.getenv("PDF_BULK_SUBSCRIBE_URL", REQUIRED_CHANNEL_URL).strip()
 CAKTO_WEBHOOK_SECRET = os.getenv("CAKTO_WEBHOOK_SECRET", "").strip()
+CAKTO_REQUIRE_WEBHOOK_SECRET = _env_bool("CAKTO_REQUIRE_WEBHOOK_SECRET", bool(CAKTO_WEBHOOK_SECRET))
 CAKTO_NOTIFY_USERS = _env_bool("CAKTO_NOTIFY_USERS", True)
 CAKTO_CLIENT_ID = os.getenv("CAKTO_CLIENT_ID", "").strip()
 CAKTO_CLIENT_SECRET = os.getenv("CAKTO_CLIENT_SECRET", "").strip()
@@ -207,6 +208,10 @@ BALTIGO_UNIVERSE_WEBAPP_URL = os.getenv(
     "https://rough-double-remarkable-north.trycloudflare.com/miniapp/bots/index.html",
 ).strip()
 DISTRIBUTION_TAG = os.getenv("DISTRIBUTION_TAG", "@MangasBrasil").strip() or "@MangasBrasil"
+API_CACHE_MAX_ENTRIES = _env_int("API_CACHE_MAX_ENTRIES", 120)
+API_RATE_LIMIT_PER_MINUTE = _env_int("API_RATE_LIMIT_PER_MINUTE", 120)
+WEBAPP_CORS_ORIGINS = _env_str_list("WEBAPP_CORS_ORIGINS", "")
+WEBAPP_TRUST_QUERY_USER_ID = _env_bool("WEBAPP_TRUST_QUERY_USER_ID", True)
 
 AI_API_KEY = os.getenv("AI_API_KEY", "").strip()
 AI_API_URL = os.getenv(
