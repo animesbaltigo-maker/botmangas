@@ -7,6 +7,12 @@ from dataclasses import dataclass
 from telegram.error import TimedOut
 
 from config import EPUB_QUEUE_LIMIT, EPUB_WORKERS, PDF_PROTECT_CONTENT
+from core.document_archive import (
+    archive_document,
+    copy_archived_document,
+    forget_archived_document,
+    get_archived_document,
+)
 from services.epub_service import get_or_build_epub
 
 
@@ -85,8 +91,25 @@ async def _process_job(app, job: EpubJob):
             progress_cb=progress_cb,
         )
 
+        archive_entry = get_archived_document("epub", job.chapter_id)
+        if not archive_entry:
+            archive_entry = await archive_document(
+                app.bot,
+                kind="epub",
+                chapter_id=job.chapter_id,
+                title_name=job.title_name,
+                chapter_number=job.chapter_number,
+                file_path=epub_path,
+                file_name=epub_name,
+                caption=job.caption,
+            )
+
         for waiter in entry["waiters"]:
-            await _send_document_safe(app.bot, waiter["chat_id"], epub_path, epub_name, waiter["caption"])
+            copied = False
+            if archive_entry:
+                copied = await copy_archived_document(app.bot, waiter["chat_id"], archive_entry, waiter["caption"])
+            if not copied:
+                await _send_document_safe(app.bot, waiter["chat_id"], epub_path, epub_name, waiter["caption"])
 
         for message in list(entry["status_messages"]):
             await _safe_edit(
@@ -131,6 +154,33 @@ async def _worker(app, queue):
 
 async def enqueue_epub_job(app, job: EpubJob):
     queue = app.bot_data["epub_queue"]
+
+    archive_entry = get_archived_document("epub", job.chapter_id)
+    if archive_entry:
+        status = None
+        if job.send_status:
+            status = await app.bot.send_message(
+                job.chat_id,
+                (
+                    "<b>EPUB encontrado no acervo</b>\n\n"
+                    f"<b>Obra:</b> {_html(job.title_name)}\n"
+                    f"<b>Capitulo:</b> {_html(job.chapter_number)}"
+                ),
+                parse_mode="HTML",
+            )
+        copied = await copy_archived_document(app.bot, job.chat_id, archive_entry, job.caption)
+        if copied:
+            if status:
+                await _safe_edit(
+                    status,
+                    (
+                        "<b>EPUB pronto</b>\n\n"
+                        f"<b>Obra:</b> {_html(job.title_name)}\n"
+                        f"<b>Capitulo:</b> {_html(job.chapter_number)}"
+                    ),
+                )
+            return queue.qsize()
+        forget_archived_document("epub", job.chapter_id)
 
     if job.chapter_id in _active_jobs:
         entry = _active_jobs[job.chapter_id]

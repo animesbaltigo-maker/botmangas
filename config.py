@@ -1,4 +1,4 @@
-import os
+﻿import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -164,6 +164,7 @@ PDF_WORKERS_SINGLE = _env_int("PDF_WORKERS_SINGLE", 1)
 PDF_WORKERS_BULK = _env_int("PDF_WORKERS_BULK", 1)
 EPUB_WORKERS = _env_int("EPUB_WORKERS", 1)
 PDF_PROTECT_CONTENT = _env_bool("PDF_PROTECT_CONTENT", True)
+DOCUMENT_ARCHIVE_CHANNEL = os.getenv("DOCUMENT_ARCHIVE_CHANNEL", "-1003722313865").strip()
 PDF_BULK_ALLOWED_IDS = sorted(set(ADMIN_IDS + _env_int_list("PDF_BULK_ALLOWED_IDS")))
 PDF_BULK_MAX_CHAPTERS = _env_int("PDF_BULK_MAX_CHAPTERS", 0)
 PDF_BULK_DELAY_SECONDS = _env_float("PDF_BULK_DELAY_SECONDS", 0.2)
@@ -232,3 +233,4 @@ AI_TIMEZONE = os.getenv("AI_TIMEZONE", "America/Cuiaba").strip()
 AI_QUIET_HOURS_START = _env_optional_int("AI_QUIET_HOURS_START")
 AI_QUIET_HOURS_END = _env_optional_int("AI_QUIET_HOURS_END")
 AI_ENABLED = bool(AI_API_KEY and AI_API_URL and AI_MODEL)
+

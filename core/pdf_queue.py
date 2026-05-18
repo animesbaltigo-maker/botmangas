@@ -5,6 +5,12 @@ from dataclasses import dataclass
 from telegram.error import TimedOut
 
 from config import PDF_PROTECT_CONTENT, PDF_QUEUE_LIMIT, PDF_WORKERS_BULK, PDF_WORKERS_SINGLE
+from core.document_archive import (
+    archive_document,
+    copy_archived_document,
+    forget_archived_document,
+    get_archived_document,
+)
 from services.pdf_service import get_or_build_pdf
 
 
@@ -85,8 +91,25 @@ async def _process_job(app, job: PdfJob):
             progress_cb=progress_cb,
         )
 
+        archive_entry = get_archived_document("pdf", job.chapter_id)
+        if not archive_entry:
+            archive_entry = await archive_document(
+                app.bot,
+                kind="pdf",
+                chapter_id=job.chapter_id,
+                title_name=job.title_name,
+                chapter_number=job.chapter_number,
+                file_path=pdf_path,
+                file_name=pdf_name,
+                caption=job.caption,
+            )
+
         for waiter in entry["waiters"]:
-            await _send_document_safe(app.bot, waiter["chat_id"], pdf_path, pdf_name, waiter["caption"])
+            copied = False
+            if archive_entry:
+                copied = await copy_archived_document(app.bot, waiter["chat_id"], archive_entry, waiter["caption"])
+            if not copied:
+                await _send_document_safe(app.bot, waiter["chat_id"], pdf_path, pdf_name, waiter["caption"])
 
         for message in list(entry["status_messages"]):
             await _safe_edit(
@@ -132,6 +155,33 @@ async def _worker(app, queue):
 async def enqueue_pdf_job(app, job: PdfJob):
     single_queue = app.bot_data["single_pdf_queue"]
     bulk_queue = app.bot_data["bulk_pdf_queue"]
+
+    archive_entry = get_archived_document("pdf", job.chapter_id)
+    if archive_entry:
+        status = None
+        if job.send_status:
+            status = await app.bot.send_message(
+                job.chat_id,
+                (
+                    "<b>PDF encontrado no acervo</b>\n\n"
+                    f"<b>Obra:</b> {_html(job.title_name)}\n"
+                    f"<b>Capitulo:</b> {_html(job.chapter_number)}"
+                ),
+                parse_mode="HTML",
+            )
+        copied = await copy_archived_document(app.bot, job.chat_id, archive_entry, job.caption)
+        if copied:
+            if status:
+                await _safe_edit(
+                    status,
+                    (
+                        "<b>PDF pronto</b>\n\n"
+                        f"<b>Obra:</b> {_html(job.title_name)}\n"
+                        f"<b>Capitulo:</b> {_html(job.chapter_number)}"
+                    ),
+                )
+            return single_queue.qsize() + bulk_queue.qsize()
+        forget_archived_document("pdf", job.chapter_id)
 
     if job.chapter_id in _active_jobs:
         entry = _active_jobs[job.chapter_id]
