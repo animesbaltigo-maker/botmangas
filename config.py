@@ -71,6 +71,11 @@ def _env_int_list(name: str) -> list[int]:
     return values
 
 
+def _env_str_list(name: str) -> list[str]:
+    raw = os.getenv(name, "").replace(";", ",")
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name, "").strip().lower()
     if not raw:
@@ -82,26 +87,26 @@ def _env_bool(name: str, default: bool) -> bool:
     return default
 
 
-def _env_str_list(name: str, default: str) -> list[str]:
-    raw = os.getenv(name, "").strip() or default
-    raw = raw.replace(";", ",")
-    return [item.strip() for item in raw.split(",") if item.strip()]
-
-
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8719336176:AAGsY1XJ4yJqlM5wOIZdkDVImVzN6K6bEYw").strip()
 CATALOG_SITE_BASE = (
     os.getenv("CATALOG_SITE_BASE", "https://mangaball.net").strip()
     or os.getenv("SOURCE_SITE_BASE", "https://mangaball.net").strip()
 ).rstrip("/")
+CATALOG_ACTIVE_SOURCE = os.getenv("CATALOG_ACTIVE_SOURCE", "hybrid").strip().lower() or "hybrid"
+os.environ.setdefault("CATALOG_ACTIVE_SOURCE", CATALOG_ACTIVE_SOURCE)
+os.environ.setdefault("HYBRID_SEARCH_TIMEOUT", "10.0")
+os.environ.setdefault("HYBRID_SEARCH_FAST_TIMEOUT", "10.0")
+os.environ.setdefault("HYBRID_ENABLE_SECONDARY_EXACT", "1")
+os.environ.setdefault("HYBRID_MANGABALL_SEARCH_TIMEOUT", "1.2")
+os.environ.setdefault("HYBRID_MANGABALL_CHAPTERS_TIMEOUT", "4.0")
+os.environ.setdefault("HYBRID_MANGABALL_CHAPTER_RESCUE_TIMEOUT", "4.0")
+os.environ.setdefault("HYBRID_SECONDARY_ENRICH_TIMEOUT", "38.0")
+os.environ.setdefault("HYBRID_MANGAFIRE_BUNDLE_TIMEOUT", "28.0")
 CATALOG_COOKIE_HEADER = os.getenv("CATALOG_COOKIE_HEADER", "").strip()
 CATALOG_USER_AGENT = os.getenv("CATALOG_USER_AGENT", "").strip()
 
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@MangasBrasil").strip()
-REQUIRED_CHANNELS = _env_str_list(
-    "REQUIRED_CHANNELS",
-    "@AtualizacoesOn,@MangasBrasil,@QG_BALTIGO",
-)
-REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "https://t.me/MangasBrasil").strip()
+REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "t.me/MangasBrasil").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "MangasBaltigo_Bot").strip().lstrip("@")
 BOT_BRAND = os.getenv("BOT_BRAND", "Mangas Baltigo").strip()
 WEBAPP_BASE_URL = os.getenv("WEBAPP_BASE_URL", "").strip().rstrip("/")
@@ -164,6 +169,7 @@ PDF_WORKERS_SINGLE = _env_int("PDF_WORKERS_SINGLE", 1)
 PDF_WORKERS_BULK = _env_int("PDF_WORKERS_BULK", 1)
 EPUB_WORKERS = _env_int("EPUB_WORKERS", 1)
 PDF_PROTECT_CONTENT = _env_bool("PDF_PROTECT_CONTENT", True)
+DOCUMENT_ARCHIVE_CHANNEL = os.getenv("DOCUMENT_ARCHIVE_CHANNEL", "-1003722313865").strip()
 PDF_BULK_ALLOWED_IDS = sorted(set(ADMIN_IDS + _env_int_list("PDF_BULK_ALLOWED_IDS")))
 PDF_BULK_MAX_CHAPTERS = _env_int("PDF_BULK_MAX_CHAPTERS", 0)
 PDF_BULK_DELAY_SECONDS = _env_float("PDF_BULK_DELAY_SECONDS", 0.2)
@@ -212,7 +218,7 @@ BALTIGO_UNIVERSE_WEBAPP_URL = os.getenv(
 DISTRIBUTION_TAG = os.getenv("DISTRIBUTION_TAG", "@MangasBrasil").strip() or "@MangasBrasil"
 API_CACHE_MAX_ENTRIES = _env_int("API_CACHE_MAX_ENTRIES", 120)
 API_RATE_LIMIT_PER_MINUTE = _env_int("API_RATE_LIMIT_PER_MINUTE", 120)
-WEBAPP_CORS_ORIGINS = _env_str_list("WEBAPP_CORS_ORIGINS", "")
+WEBAPP_CORS_ORIGINS = _env_str_list("WEBAPP_CORS_ORIGINS")
 WEBAPP_TRUST_QUERY_USER_ID = _env_bool("WEBAPP_TRUST_QUERY_USER_ID", True)
 
 AI_API_KEY = os.getenv("AI_API_KEY", "").strip()

@@ -56,6 +56,7 @@ from services.telegraph_service import get_cached_chapter_page_url, get_or_creat
 CALLBACK_COOLDOWN = 0.8
 TELEGRAPH_INLINE_WAIT = 1.15
 CHAPTER_PANEL_FAST_TIMEOUT = 16.0
+START_TITLE_RESOLVE_TIMEOUT = 24.0
 LANGUAGE_PANEL_TIMEOUT = 6.0
 SUPPORT_BOT_URL = "https://t.me/QGSuporteBot"
 
@@ -190,6 +191,11 @@ def _summary_latest_chapter(summary: dict) -> dict | None:
     }
 
 
+def _latest_chapter_dict(bundle: dict) -> dict:
+    latest = (bundle or {}).get("latest_chapter")
+    return latest if isinstance(latest, dict) else {}
+
+
 def _fallback_title_bundle(title_id: str, *, title: str = "Manga", summary: dict | None = None) -> dict:
     title_id = str(title_id or "").strip()
     summary = summary or get_cached_title_summary(title_id) or {}
@@ -210,6 +216,37 @@ def _fallback_title_bundle(title_id: str, *, title: str = "Manga", summary: dict
         or "Manga"
     )
     cover_url = summary.get("cover_url") or ""
+    chapter_id = str(summary.get("chapter_id") or "").strip()
+    chapter_number = str(summary.get("latest_chapter") or summary.get("chapter_number") or "").strip()
+    chapter_language = PREFERRED_CHAPTER_LANG
+    chapters = []
+    if chapter_id:
+        chapter = {
+            "chapter_number": chapter_number or "?",
+            "chapter_number_float": chapter_number or "0",
+            "sort_value": 0,
+            "translations": [
+                {
+                    "id": chapter_id,
+                    "url": summary.get("chapter_url") or "",
+                    "language": chapter_language,
+                    "volume": "",
+                    "name": "",
+                    "group_name": "",
+                    "date": summary.get("updated_at") or "",
+                }
+            ],
+            "preferred_translation": {
+                "id": chapter_id,
+                "url": summary.get("chapter_url") or "",
+                "language": chapter_language,
+                "volume": "",
+                "name": "",
+                "group_name": "",
+                "date": summary.get("updated_at") or "",
+            },
+        }
+        chapters.append(chapter)
 
     return {
         "title_id": title_id,
@@ -219,9 +256,9 @@ def _fallback_title_bundle(title_id: str, *, title: str = "Manga", summary: dict
         "background_url": summary.get("background_url") or cover_url,
         "status": summary.get("status") or summary.get("anilist_status") or "carregando",
         "rating": summary.get("rating") or summary.get("anilist_score") or "",
-        "chapters": [],
+        "chapters": chapters,
         "languages": summary.get("languages") or [],
-        "total_chapters": total_chapters,
+        "total_chapters": total_chapters or len(chapters),
         "latest_chapter": _summary_latest_chapter(summary),
         "genres": summary.get("genres") or summary.get("anilist_genres") or [],
         "chapters_partial": True,
@@ -231,11 +268,24 @@ def _fallback_title_bundle(title_id: str, *, title: str = "Manga", summary: dict
 async def _load_title_panel_bundle(title_id: str, lang: str | None = None) -> dict:
     resolved_lang = normalize_language(lang) or PREFERRED_CHAPTER_LANG
     cached = get_cached_title_bundle(title_id, resolved_lang) or get_cached_title_overview(title_id)
-    if cached is not None:
+    if cached is not None and (cached.get("chapters") or not cached.get("chapters_partial")):
         return cached
 
     summary = get_cached_title_summary(title_id)
-    return _fallback_title_bundle(title_id, summary=summary)
+    fallback = _fallback_title_bundle(title_id, summary=summary)
+    try:
+        resolved = await asyncio.wait_for(get_title_chapters_snapshot(title_id, resolved_lang), timeout=START_TITLE_RESOLVE_TIMEOUT)
+    except Exception as error:
+        print("[TITLE_PANEL][SNAPSHOT_FALLBACK]", title_id, repr(error))
+        return cached or fallback
+    if isinstance(resolved, dict) and (resolved.get("chapters") or resolved.get("cover_url") or resolved.get("background_url")):
+        return {
+            **fallback,
+            **(cached or {}),
+            **resolved,
+            "title_id": str((resolved.get("title_id") or title_id)).strip(),
+        }
+    return cached or fallback
 
 
 def _pick_chapter_image(chapter: dict) -> str:
@@ -441,7 +491,7 @@ def _title_text(bundle: dict, last_read: dict | None = None, user_id: int | None
 def _title_keyboard(bundle: dict, last_read: dict | None = None, user_id: int | None = None) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     title_id = str(bundle.get("title_id") or "").strip()
-    latest_chapter = bundle.get("latest_chapter") or {}
+    latest_chapter = _latest_chapter_dict(bundle)
     lang = _user_lang(user_id)
 
     if latest_chapter.get("chapter_id"):
@@ -1141,7 +1191,7 @@ async def _auto_finalize_title_panel(
         last_read = await run_sync(get_last_read_entry, user_id, bundle_title_id) if user_id else None
         lang = _user_lang(user_id)
         chapters = flatten_chapters({"chapters": bundle.get("chapters") or []}, lang)
-        latest = bundle.get("latest_chapter") or {}
+        latest = _latest_chapter_dict(bundle)
         chapter_ids = [latest.get("chapter_id") or ""]
         chapter_ids.extend(item.get("chapter_id") or "" for item in chapters[:3])
         prefetch_reader_payloads(chapter_ids, limit=4)
@@ -1274,7 +1324,7 @@ async def send_title_panel(target, context: ContextTypes.DEFAULT_TYPE, title_id:
 
     chapters = flatten_chapters({"chapters": bundle.get("chapters") or []}, lang)
     if bundle.get("chapters"):
-        latest = bundle.get("latest_chapter") or {}
+        latest = _latest_chapter_dict(bundle)
         chapter_ids = [latest.get("chapter_id") or ""]
         chapter_ids.extend(item.get("chapter_id") or "" for item in chapters[:3])
         prefetch_reader_payloads(chapter_ids, limit=4)
@@ -1476,13 +1526,20 @@ async def verify_offline_payment_panel(target, context: ContextTypes.DEFAULT_TYP
 async def send_chapters_page(target, context: ContextTypes.DEFAULT_TYPE, title_id: str, page: int, user_id: int | None, *, edit: bool):
     lang = _user_lang(user_id)
     bundle = get_cached_title_bundle(title_id, lang)
-    if bundle is None:
+    if bundle is None or not bundle.get("chapters"):
         try:
-            bundle = await asyncio.wait_for(get_title_bundle(title_id, lang), timeout=CHAPTER_PANEL_FAST_TIMEOUT)
+            bundle = await asyncio.wait_for(get_title_chapters_snapshot(title_id, lang), timeout=START_TITLE_RESOLVE_TIMEOUT)
         except Exception as error:
-            print("[CHAPTER_PANEL][FAST_FALLBACK]", title_id, repr(error))
-            prefetch_title_bundles([title_id], lang=lang, limit=1)
-            bundle = _fallback_title_bundle(title_id)
+            print("[CHAPTER_PANEL][SNAPSHOT_FALLBACK]", title_id, repr(error))
+            try:
+                bundle = await asyncio.wait_for(get_title_bundle(title_id, lang), timeout=CHAPTER_PANEL_FAST_TIMEOUT)
+            except Exception as bundle_error:
+                print("[CHAPTER_PANEL][FAST_FALLBACK]", title_id, repr(bundle_error))
+                bundle = None
+
+    if bundle is None:
+        prefetch_title_bundles([title_id], lang=lang, limit=1)
+        bundle = _fallback_title_bundle(title_id)
 
     chapters = flatten_chapters({"chapters": bundle.get("chapters") or []}, lang)
     read_ids = set(await run_sync(get_read_chapter_ids, user_id, bundle["title_id"])) if user_id else set()

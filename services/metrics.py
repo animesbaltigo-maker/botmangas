@@ -361,16 +361,22 @@ def get_read_chapter_ids(user_id: int | str, title_id: str) -> list[str]:
     user_id = str(user_id).strip()
     title_id = str(title_id).strip()
 
-    with _get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT chapter_id
-            FROM reading_history
-            WHERE user_id = ? AND title_id = ?
-            ORDER BY updated_at DESC
-            """,
-            (user_id, title_id),
-        ).fetchall()
+    try:
+        with _get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT chapter_id
+                FROM reading_history
+                WHERE user_id = ? AND title_id = ?
+                ORDER BY updated_at DESC
+                """,
+                (user_id, title_id),
+            ).fetchall()
+    except sqlite3.OperationalError as error:
+        if "no such table" not in str(error).lower():
+            raise
+        init_metrics_db()
+        return []
 
     return [str(row["chapter_id"]) for row in rows if row["chapter_id"]]
 
@@ -379,17 +385,23 @@ def get_last_read_entry(user_id: int | str, title_id: str) -> dict[str, Any] | N
     user_id = str(user_id).strip()
     title_id = str(title_id).strip()
 
-    with _get_conn() as conn:
-        row = conn.execute(
-            """
-            SELECT title_id, title_name, chapter_id, chapter_number, chapter_url, updated_at
-            FROM reading_history
-            WHERE user_id = ? AND title_id = ?
-            ORDER BY updated_at DESC
-            LIMIT 1
-            """,
-            (user_id, title_id),
-        ).fetchone()
+    try:
+        with _get_conn() as conn:
+            row = conn.execute(
+                """
+                SELECT title_id, title_name, chapter_id, chapter_number, chapter_url, updated_at
+                FROM reading_history
+                WHERE user_id = ? AND title_id = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (user_id, title_id),
+            ).fetchone()
+    except sqlite3.OperationalError as error:
+        if "no such table" not in str(error).lower():
+            raise
+        init_metrics_db()
+        return None
 
     if not row:
         return None

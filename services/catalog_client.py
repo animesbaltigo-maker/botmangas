@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
+import signal
 import time
 import unicodedata
 from decimal import Decimal, InvalidOperation
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -71,6 +74,10 @@ _SOURCE_LAST_REQUEST_AT = 0.0
 
 _CACHE: dict[str, dict[str, Any]] = {}
 _INFLIGHT: dict[str, asyncio.Task] = {}
+try:
+    CATALOG_MEMORY_CACHE_LIMIT = max(200, int(os.getenv("CATALOG_MEMORY_CACHE_LIMIT", "900") or 900))
+except ValueError:
+    CATALOG_MEMORY_CACHE_LIMIT = 900
 _TITLE_SEARCH_LOCK = asyncio.Lock()
 _TITLE_URL_CACHE: dict[str, str] = {}
 _TITLE_SUMMARY_CACHE: dict[str, dict[str, Any]] = {}
@@ -81,11 +88,17 @@ _CHAPTER_TITLE_CACHE: dict[str, str] = {}
 _CSRF_TOKEN: dict[str, Any] = {"value": "", "expires_at": 0.0}
 _BROWSER_SESSION: dict[str, Any] = {"cookies": {}, "csrf_token": "", "expires_at": 0.0}
 _BROWSER_SESSION_LOCK = asyncio.Lock()
+_PLAYWRIGHT_FALLBACK_LOCK = asyncio.Lock()
+_PLAYWRIGHT_FAIL_UNTIL = 0.0
+_PLAYWRIGHT_LAST_CLEANUP = 0.0
 _WARMUP_TASK: asyncio.Task | None = None
 
 PLAYWRIGHT_SESSION_TTL = 1800
 PLAYWRIGHT_NAV_TIMEOUT = 30000
 PLAYWRIGHT_META_TIMEOUT = 10000
+PLAYWRIGHT_CLEANUP_MAX_AGE_SECONDS = max(300, int(os.getenv("CATALOG_PLAYWRIGHT_CLEANUP_MAX_AGE", "900") or 900))
+PLAYWRIGHT_COOLDOWN_SECONDS = max(60, int(os.getenv("CATALOG_PLAYWRIGHT_COOLDOWN", "300") or 300))
+PLAYWRIGHT_FALLBACK_ENABLED = os.getenv("CATALOG_PLAYWRIGHT_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
 SEARCH_REMOTE_TIMEOUT = 8.0
 SEARCH_QUICK_TIMEOUT = 3.4
 SEARCH_RICH_TIMEOUT = 4.6
@@ -96,9 +109,9 @@ FORM_QUICK_TIMEOUT = httpx.Timeout(5.5, connect=4.0, read=5.5, write=5.5, pool=5
 CHAPTER_LIST_QUICK_TIMEOUT = 4.2
 CHAPTER_LIST_CACHED_TIMEOUT = httpx.Timeout(2.8, connect=2.0, read=2.8, write=2.8, pool=2.8)
 try:
-    SOURCE_MIN_INTERVAL_SECONDS = max(0.0, float(os.getenv("CATALOG_SOURCE_MIN_INTERVAL", "1.25") or 1.25))
+    SOURCE_MIN_INTERVAL_SECONDS = max(0.0, float(os.getenv("CATALOG_SOURCE_MIN_INTERVAL", "0.35") or 0.35))
 except ValueError:
-    SOURCE_MIN_INTERVAL_SECONDS = 1.25
+    SOURCE_MIN_INTERVAL_SECONDS = 0.35
 
 SEARCH_TTL = min(max(API_CACHE_TTL_SECONDS, 180), 1800)
 HOME_TTL = min(max(API_CACHE_TTL_SECONDS, 300), 1800)
@@ -282,7 +295,12 @@ def _cache_get(key: str, ttl: int):
 
 
 def _cache_set(key: str, data: Any) -> Any:
-    _CACHE[key] = {"time": time.time(), "data": data}
+    now = time.time()
+    _CACHE[key] = {"time": now, "data": data}
+    overflow = len(_CACHE) - CATALOG_MEMORY_CACHE_LIMIT
+    if overflow > 0:
+        for old_key, _ in sorted(_CACHE.items(), key=lambda pair: pair[1].get("time", 0))[:overflow]:
+            _CACHE.pop(old_key, None)
     return data
 
 
@@ -355,7 +373,8 @@ async def _source_request_gate(url: str) -> None:
 
 
 def _normalize_text(value: str) -> str:
-    value = unicodedata.normalize("NFKD", _clean(value).lower())
+    value = _clean(value).lower().replace("×", " x ").replace("✕", " x ")
+    value = unicodedata.normalize("NFKD", value)
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
     value = re.sub(r"[^a-z0-9\s-]", " ", value)
     return re.sub(r"\s+", " ", value).strip()
@@ -577,6 +596,85 @@ def _is_auth_block_error(error: Exception | None) -> bool:
     if isinstance(error, httpx.HTTPStatusError) and error.response is not None:
         return error.response.status_code in (401, 403)
     return "401" in repr(error) or "403" in repr(error)
+
+
+def _source_temporarily_disabled(url: str) -> bool:
+    if os.getenv("CATALOG_SOURCE_DISABLED", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return False
+    return _is_source_url(url)
+
+
+def _raise_if_source_disabled(url: str) -> None:
+    if _source_temporarily_disabled(url):
+        raise RuntimeError("Fonte temporariamente desativada: cookie cf_clearance invalido ou bloqueado pela Cloudflare.")
+
+
+def _playwright_temporarily_disabled() -> bool:
+    return time.monotonic() < _PLAYWRIGHT_FAIL_UNTIL
+
+
+def _playwright_runtime_allowed() -> bool:
+    return PLAYWRIGHT_FALLBACK_ENABLED and not _playwright_temporarily_disabled()
+
+
+def _mark_playwright_failure(error: BaseException | None = None) -> None:
+    global _PLAYWRIGHT_FAIL_UNTIL
+    _PLAYWRIGHT_FAIL_UNTIL = time.monotonic() + PLAYWRIGHT_COOLDOWN_SECONDS
+    if error is not None:
+        print(f"[CATALOG][PLAYWRIGHT_COOLDOWN] {error!r}", flush=True)
+
+
+def cleanup_stale_playwright_processes(*, max_age_seconds: int | None = None, force: bool = False) -> int:
+    global _PLAYWRIGHT_LAST_CLEANUP
+    if os.getenv("CATALOG_PLAYWRIGHT_JANITOR", "1").strip().lower() in {"0", "false", "no", "off"}:
+        return 0
+    now = time.monotonic()
+    if not force and now - _PLAYWRIGHT_LAST_CLEANUP < 120:
+        return 0
+    _PLAYWRIGHT_LAST_CLEANUP = now
+
+    max_age = max(60, int(max_age_seconds or PLAYWRIGHT_CLEANUP_MAX_AGE_SECONDS))
+    try:
+        uptime = float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0])
+        ticks = os.sysconf(os.sysconf_names["SC_CLK_TCK"])
+    except Exception:
+        return 0
+
+    killed = 0
+    own_pid = os.getpid()
+    project_root = str(Path(__file__).resolve().parents[1])
+    for proc_dir in Path("/proc").iterdir():
+        if not proc_dir.name.isdigit():
+            continue
+        pid = int(proc_dir.name)
+        if pid == own_pid:
+            continue
+        try:
+            raw_cmd = (proc_dir / "cmdline").read_bytes()
+            if not raw_cmd:
+                continue
+            cmdline = raw_cmd.replace(b"\x00", b" ").decode("utf-8", errors="ignore")
+            if "playwright/driver/node" not in cmdline and "playwright_chromiumdev_profile" not in cmdline:
+                continue
+            cwd = ""
+            with contextlib.suppress(Exception):
+                cwd = os.readlink(proc_dir / "cwd")
+            if project_root not in cmdline and not cwd.startswith(project_root):
+                continue
+            stat = (proc_dir / "stat").read_text(encoding="utf-8", errors="ignore")
+            start_ticks = int(stat.rsplit(")", 1)[1].split()[19])
+            age = uptime - (start_ticks / ticks)
+            if age < max_age:
+                continue
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+        except ProcessLookupError:
+            continue
+        except Exception:
+            continue
+    if killed:
+        print(f"[CATALOG][PLAYWRIGHT_JANITOR] killed={killed} max_age={max_age}", flush=True)
+    return killed
 
 
 def _extract_title_id(value: Any) -> str:
@@ -826,6 +924,8 @@ def _remember_title_summary(item: dict[str, Any]) -> None:
         "anilist_status",
         "anilist_score",
         "latest_chapter",
+        "preferred_title",
+        "alt_titles",
         "languages",
         "total_translations",
         "chapter_id",
@@ -947,6 +1047,12 @@ async def _prepare_playwright_page(context, page) -> None:
 
 
 async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]:
+    if _source_temporarily_disabled(BASE_URL):
+        raise RuntimeError("Fonte temporariamente desativada: sessao de navegador bloqueada.")
+    if not PLAYWRIGHT_FALLBACK_ENABLED:
+        raise RuntimeError("Fallback Playwright desativado para manter a fonte rapida.")
+    if _playwright_temporarily_disabled():
+        raise RuntimeError("Sessao de navegador em cooldown apos falhas recentes.")
     if not force_refresh and _browser_session_is_valid():
         return {
             "cookies": dict(_BROWSER_SESSION["cookies"]),
@@ -960,6 +1066,7 @@ async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]
             "'python -m playwright install chromium'."
         )
 
+    cleanup_stale_playwright_processes()
     async with _BROWSER_SESSION_LOCK:
         if not force_refresh and _browser_session_is_valid():
             return {
@@ -968,7 +1075,12 @@ async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]
                 "expires_at": _BROWSER_SESSION["expires_at"],
             }
 
-        async with async_playwright() as playwright:
+        playwright = None
+        browser = None
+        context = None
+        page = None
+        try:
+            playwright = await async_playwright().start()
             browser = await playwright.chromium.launch(**_playwright_launch_kwargs())
             try:
                 context = await browser.new_context(
@@ -986,10 +1098,19 @@ async def _ensure_browser_session(force_refresh: bool = False) -> dict[str, Any]
                     if _clean(item.get("name")) and _clean(item.get("value"))
                 }
             finally:
-                try:
-                    await browser.close()
-                except Exception:
-                    pass
+                for resource in (page, context, browser):
+                    if resource is None:
+                        continue
+                    with contextlib.suppress(Exception):
+                        await asyncio.wait_for(resource.close(), timeout=5)
+        except Exception as error:
+            _mark_playwright_failure(error)
+            raise
+        finally:
+            if playwright is not None:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(playwright.stop(), timeout=5)
+            cleanup_stale_playwright_processes(max_age_seconds=30, force=True)
 
         if not csrf_token or not cookies:
             raise RuntimeError("Nao foi possivel obter a sessao protegida da fonte.")
@@ -1019,6 +1140,7 @@ async def _build_ajax_headers(
     *,
     allow_browser_token: bool = True,
 ) -> dict[str, str]:
+    session_cookies = dict((session or {}).get("cookies") or {})
     csrf_token = _clean((session or {}).get("csrf_token"))
     if not csrf_token:
         csrf_token = await get_csrf_token(allow_browser=allow_browser_token)
@@ -1031,7 +1153,7 @@ async def _build_ajax_headers(
         "Referer": referer,
         "Origin": BASE_URL,
     }
-    if CATALOG_COOKIE_HEADER:
+    if CATALOG_COOKIE_HEADER and not session_cookies:
         headers["Cookie"] = CATALOG_COOKIE_HEADER
     if CATALOG_USER_AGENT:
         headers["User-Agent"] = CATALOG_USER_AGENT
@@ -1039,6 +1161,12 @@ async def _build_ajax_headers(
 
 
 async def _request_form_json_via_playwright(path: str, data: dict[str, Any], referer: str) -> dict[str, Any]:
+    if _source_temporarily_disabled(_absolute_url(path)):
+        raise RuntimeError("Fonte temporariamente desativada: fallback Playwright bloqueado.")
+    if not PLAYWRIGHT_FALLBACK_ENABLED:
+        raise RuntimeError("Fallback Playwright desativado para manter a fonte rapida.")
+    if _playwright_temporarily_disabled():
+        raise RuntimeError("Fallback Playwright em cooldown apos falhas recentes.")
     if async_playwright is None:
         raise RuntimeError(
             "Playwright nao esta instalado. Instale 'playwright' e rode "
@@ -1048,9 +1176,16 @@ async def _request_form_json_via_playwright(path: str, data: dict[str, Any], ref
     url = _absolute_url(path)
     referer = _absolute_url(referer) or f"{BASE_URL}/"
 
-    async with async_playwright() as playwright:
-        browser = await playwright.chromium.launch(**_playwright_launch_kwargs())
+    cleanup_stale_playwright_processes()
+    async with _PLAYWRIGHT_FALLBACK_LOCK:
+        playwright = None
+        browser = None
+        context = None
+        page = None
+        response_status = 0
         try:
+            playwright = await async_playwright().start()
+            browser = await playwright.chromium.launch(**_playwright_launch_kwargs())
             context = await browser.new_context(
                 user_agent=DEFAULT_CATALOG_USER_AGENT,
                 locale="pt-BR",
@@ -1058,9 +1193,15 @@ async def _request_form_json_via_playwright(path: str, data: dict[str, Any], ref
             await _seed_playwright_context(context)
             page = await context.new_page()
             await _prepare_playwright_page(context, page)
+            context_cookies = {
+                _clean(item.get("name")): _clean(item.get("value"))
+                for item in (await context.cookies())
+                if _clean(item.get("name")) and _clean(item.get("value"))
+            }
             headers = await _build_ajax_headers(
                 {
                     "csrf_token": await _page_csrf_token(page),
+                    "cookies": context_cookies,
                 },
                 referer,
             )
@@ -1070,15 +1211,24 @@ async def _request_form_json_via_playwright(path: str, data: dict[str, Any], ref
                 headers=headers,
                 timeout=PLAYWRIGHT_NAV_TIMEOUT,
             )
+            response_status = int(response.status)
             response_text = await response.text()
+        except Exception as error:
+            _mark_playwright_failure(error)
+            raise
         finally:
-            try:
-                await browser.close()
-            except Exception:
-                pass
+            for resource in (page, context, browser):
+                if resource is None:
+                    continue
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(resource.close(), timeout=5)
+            if playwright is not None:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(playwright.stop(), timeout=5)
+            cleanup_stale_playwright_processes(max_age_seconds=30, force=True)
 
-    if response.status != 200:
-        raise RuntimeError(f"Playwright recebeu HTTP {response.status} ao consultar {url}.")
+    if response_status != 200:
+        raise RuntimeError(f"Playwright recebeu HTTP {response_status} ao consultar {url}.")
 
     try:
         return json.loads(response_text)
@@ -1450,6 +1600,7 @@ def _normalize_chapter_groups(raw_groups: list[dict[str, Any]], preferred_lang: 
 
 
 async def _request_text(url: str, *, headers: dict[str, str] | None = None) -> str:
+    _raise_if_source_disabled(url)
     client = await get_http_client()
     last_error: Exception | None = None
     headers = _merge_source_headers(headers)
@@ -1469,6 +1620,7 @@ async def _request_text(url: str, *, headers: dict[str, str] | None = None) -> s
 
 
 async def _request_text_fast(url: str, *, headers: dict[str, str] | None = None) -> str:
+    _raise_if_source_disabled(url)
     client = await get_http_client()
     headers = _merge_source_headers(headers)
 
@@ -1490,12 +1642,18 @@ async def _try_request_text(url: str) -> str:
 async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
     client = await get_http_client()
     url = _absolute_url(path)
+    _raise_if_source_disabled(url)
     referer = _build_ajax_referer(path, data)
 
     last_error: Exception | None = None
     browser_error: Exception | None = None
 
     browser_session = _browser_session_snapshot()
+    if not browser_session and _playwright_runtime_allowed():
+        try:
+            browser_session = await _ensure_browser_session(force_refresh=False)
+        except Exception as error:
+            browser_error = error
     headers = await _build_ajax_headers(
         browser_session,
         referer,
@@ -1519,13 +1677,12 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
                     request=response.request,
                     response=response,
                 )
-                if not CATALOG_COOKIE_HEADER:
-                    try:
-                        browser_session = await _ensure_browser_session(force_refresh=True)
-                        headers = await _build_ajax_headers(browser_session, referer)
-                        cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
-                    except Exception as error:
-                        browser_error = error
+                try:
+                    browser_session = await _ensure_browser_session(force_refresh=True)
+                    headers = await _build_ajax_headers(browser_session, referer)
+                    cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
+                except Exception as error:
+                    browser_error = error
                 await asyncio.sleep(0.35 * (attempt + 1))
                 continue
             response.raise_for_status()
@@ -1534,17 +1691,16 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
             last_error = error
             if isinstance(error, httpx.HTTPStatusError) and error.response is not None:
                 if error.response.status_code in (401, 403):
-                    if not CATALOG_COOKIE_HEADER:
-                        try:
-                            browser_session = await _ensure_browser_session(force_refresh=True)
-                            headers = await _build_ajax_headers(browser_session, referer)
-                            cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
-                        except Exception as browser_refresh_error:
-                            browser_error = browser_refresh_error
+                    try:
+                        browser_session = await _ensure_browser_session(force_refresh=True)
+                        headers = await _build_ajax_headers(browser_session, referer)
+                        cookies = {**_manual_cookie_dict(), **dict(browser_session.get("cookies") or {})}
+                    except Exception as browser_refresh_error:
+                        browser_error = browser_refresh_error
             await asyncio.sleep(0.35 * (attempt + 1))
 
     if isinstance(last_error, httpx.HTTPStatusError) and last_error.response is not None:
-        if last_error.response.status_code in (401, 403) and not CATALOG_COOKIE_HEADER:
+        if last_error.response.status_code in (401, 403):
             try:
                 return await _request_form_json_via_playwright(path, data, referer)
             except Exception as error:
@@ -1565,6 +1721,7 @@ async def _request_form_json(path: str, data: dict[str, Any]) -> dict[str, Any]:
 async def _request_form_json_quick(path: str, data: dict[str, Any]) -> dict[str, Any]:
     client = await get_http_client()
     url = _absolute_url(path)
+    _raise_if_source_disabled(url)
     referer = _build_ajax_referer(path, data)
     headers = await _build_ajax_headers(None, referer, allow_browser_token=False)
     last_error: Exception | None = None
@@ -1592,6 +1749,7 @@ async def _request_form_json_quick(path: str, data: dict[str, Any]) -> dict[str,
 async def _request_form_json_cached_quick(path: str, data: dict[str, Any]) -> dict[str, Any]:
     client = await get_http_client()
     url = _absolute_url(path)
+    _raise_if_source_disabled(url)
     referer = _absolute_url(_build_ajax_referer(path, data)) or f"{BASE_URL}/"
     csrf_token = ""
     cookies: dict[str, str] = {}
@@ -1643,15 +1801,16 @@ async def get_csrf_token(force_refresh: bool = False, *, allow_browser: bool = T
             raise RuntimeError("Nao foi possivel obter o token CSRF da fonte.")
         return token_value
 
+    first_token_error: Exception | None = None
     try:
         token = await _token_from_html(fast=True)
         _CSRF_TOKEN["value"] = token
         _CSRF_TOKEN["expires_at"] = time.time() + 1800
         return token
-    except Exception:
-        pass
+    except Exception as error:
+        first_token_error = error
 
-    if allow_browser:
+    if allow_browser and PLAYWRIGHT_FALLBACK_ENABLED:
         try:
             browser_session = await _ensure_browser_session(force_refresh=force_refresh)
             token = _clean(browser_session.get("csrf_token"))
@@ -1661,6 +1820,9 @@ async def get_csrf_token(force_refresh: bool = False, *, allow_browser: bool = T
                 return token
         except Exception:
             pass
+
+    if allow_browser and not PLAYWRIGHT_FALLBACK_ENABLED and first_token_error is not None:
+        raise first_token_error
 
     token = await _token_from_html(fast=not allow_browser)
     _CSRF_TOKEN["value"] = token
@@ -1920,14 +2082,25 @@ async def get_chapter_list(title_id: str, lang: str | None = None) -> dict[str, 
                     payload,
                 )
             except Exception as full_error:
-                try:
-                    response = await _request_form_json_via_playwright(
-                        "/api/v1/chapter/chapter-listing-by-title-id/",
-                        payload,
-                        referer,
-                    )
-                except Exception as playwright_error:
-                    print("[CATALOG][CHAPTERS]", title_id, repr(first_error), repr(full_error), repr(playwright_error))
+                if _is_auth_block_error(full_error):
+                    try:
+                        response = await _request_form_json_via_playwright(
+                            "/api/v1/chapter/chapter-listing-by-title-id/",
+                            payload,
+                            referer,
+                        )
+                    except Exception as playwright_error:
+                        print("[CATALOG][CHAPTERS]", title_id, repr(first_error), repr(full_error), repr(playwright_error))
+                        return {
+                            "title_id": title_id,
+                            "chapters": [],
+                            "languages": [],
+                            "total_translations": 0,
+                            "partial": True,
+                            "error": repr(first_error),
+                        }
+                else:
+                    print("[CATALOG][CHAPTERS]", title_id, repr(first_error), repr(full_error))
                     return {
                         "title_id": title_id,
                         "chapters": [],
@@ -2319,9 +2492,13 @@ async def get_title_bundle(title_ref: str, lang: str | None = None) -> dict[str,
         chapter_task = asyncio.create_task(get_chapter_list(title_id, resolved_lang)) if title_id else None
         try:
             details = await get_title_details(title_ref)
-        except Exception:
+        except Exception as error:
             if chapter_task is not None:
                 chapter_task.cancel()
+                with contextlib.suppress(Exception, asyncio.CancelledError):
+                    await chapter_task
+            if title_id and _is_auth_block_error(error):
+                return await get_title_chapters_snapshot(title_id, resolved_lang)
             raise
         details_title_id = _extract_title_id(details.get("title_id")) or ""
 
@@ -2330,6 +2507,8 @@ async def get_title_bundle(title_ref: str, lang: str | None = None) -> dict[str,
         else:
             if chapter_task is not None:
                 chapter_task.cancel()
+                with contextlib.suppress(Exception, asyncio.CancelledError):
+                    await chapter_task
             chapters_source = get_chapter_list(details["title_id"], resolved_lang)
 
         chapters_payload, anilist = await asyncio.gather(
@@ -2651,11 +2830,15 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
         return list(details.get("genres") or details.get("anilist_genres") or [])
 
     for page in range(1, max_pages + 1):
-        raw_items = await get_title_search(
-            "getRecentlyUpdatedChapter",
-            limit=batch_size,
-            page=page,
-        )
+        try:
+            raw_items = await get_title_search(
+                "getRecentlyUpdatedChapter",
+                limit=batch_size,
+                page=page,
+            )
+        except Exception as error:
+            print("[CATALOG][RECENT_CHAPTERS]", repr(error))
+            break
         if not raw_items:
             break
 
@@ -2761,24 +2944,22 @@ async def get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, An
 
 
 async def warm_catalog_cache(*, include_home: bool = True) -> None:
-    if not BASE_URL:
+    if not BASE_URL or _source_temporarily_disabled(BASE_URL):
         return
 
-    try:
-        await _ensure_browser_session()
-    except Exception:
-        pass
+    async def _with_timeout(coro, timeout: float = 20.0):
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        except Exception:
+            return None
+
+    if PLAYWRIGHT_FALLBACK_ENABLED and os.getenv("CATALOG_WARM_BROWSER_SESSION", "").strip().lower() in {"1", "true", "yes", "on"}:
+        await _with_timeout(_ensure_browser_session(), timeout=25.0)
 
     if include_home:
-        try:
-            await get_title_search("getFeatured", limit=6)
-            await get_title_search("getRecommend", limit=6)
-            await get_title_search("getPopular", limit=6)
-            await get_title_search("getRecentRead", limit=6, search_time=RECENT_CHAPTER_TIME)
-            await get_title_search("getRecentChapterRead", limit=6, search_time=RECENT_CHAPTER_TIME)
-            await get_recent_chapter_updates(limit=6)
-        except Exception:
-            pass
+        await _with_timeout(get_title_search("getFeatured", limit=6))
+        await _with_timeout(get_title_search("getPopular", limit=6))
+        await _with_timeout(get_recent_chapter_updates(limit=6), timeout=30.0)
 
 
 def schedule_warm_catalog_cache() -> asyncio.Task | None:
@@ -2800,8 +2981,11 @@ def prefetch_title_bundles(title_refs: list[str], *, lang: str | None = None, li
         return None
 
     async def _runner():
-        await asyncio.gather(*(get_title_chapters_snapshot(ref, lang) for ref in refs), return_exceptions=True)
-        await asyncio.gather(*(get_title_bundle(ref, lang) for ref in refs), return_exceptions=True)
+        for ref in refs:
+            try:
+                await asyncio.wait_for(get_title_chapters_snapshot(ref, lang), timeout=8.0)
+            except Exception:
+                pass
 
     try:
         return asyncio.create_task(_runner())
@@ -2816,9 +3000,1701 @@ def prefetch_reader_payloads(chapter_refs: list[str], *, lang: str | None = None
         return None
 
     async def _runner():
-        await asyncio.gather(*(get_chapter_reader_payload(ref, lang) for ref in refs), return_exceptions=True)
+        for ref in refs:
+            try:
+                await asyncio.wait_for(get_chapter_reader_payload(ref, lang), timeout=8.0)
+            except Exception:
+                pass
 
     try:
         return asyncio.create_task(_runner())
     except RuntimeError:
         return None
+
+
+_mangaball_clear_catalog_cache = clear_catalog_cache
+_mangaball_get_csrf_token = get_csrf_token
+_mangaball_get_search_fallback_titles = get_search_fallback_titles
+_mangaball_get_cached_search_titles = get_cached_search_titles
+_mangaball_search_titles = search_titles
+_mangaball_search_titles_fast = search_titles_fast
+_mangaball_get_title_search = get_title_search
+_mangaball_get_cached_title_search = get_cached_title_search
+_mangaball_get_origin_titles = get_origin_titles
+_mangaball_get_home_payload = get_home_payload
+_mangaball_get_cached_home_snapshot = get_cached_home_snapshot
+_mangaball_get_recent_chapter_updates = get_recent_chapter_updates
+_mangaball_get_recent_chapters = get_recent_chapters
+_mangaball_get_cached_title_summary = get_cached_title_summary
+_mangaball_get_title_details = get_title_details
+_mangaball_get_title_overview = get_title_overview
+_mangaball_get_title_chapters_snapshot = get_title_chapters_snapshot
+_mangaball_get_title_bundle = get_title_bundle
+_mangaball_get_cached_title_bundle = get_cached_title_bundle
+_mangaball_get_chapter_list = get_chapter_list
+_mangaball_get_chapter_list_fast = get_chapter_list_fast
+_mangaball_get_cached_chapter_list = get_cached_chapter_list
+_mangaball_flatten_chapters = flatten_chapters
+_mangaball_get_adjacent_chapters = get_adjacent_chapters
+_mangaball_get_chapter_details = get_chapter_details
+_mangaball_get_chapter_reader_payload = get_chapter_reader_payload
+_mangaball_get_cached_chapter_reader_payload = get_cached_chapter_reader_payload
+_mangaball_warm_catalog_cache = warm_catalog_cache
+_mangaball_schedule_warm_catalog_cache = schedule_warm_catalog_cache
+_mangaball_prefetch_title_bundles = prefetch_title_bundles
+_mangaball_prefetch_reader_payloads = prefetch_reader_payloads
+
+_HYBRID_TITLE_MAP: dict[str, str] = {}
+_HYBRID_MANGABALL_FAIL_UNTIL = 0.0
+try:
+    _HYBRID_MANGABALL_CONCURRENCY = max(1, int(os.getenv("HYBRID_MANGABALL_CONCURRENCY", "1") or 1))
+except ValueError:
+    _HYBRID_MANGABALL_CONCURRENCY = 1
+_HYBRID_MANGABALL_SEMAPHORE = asyncio.Semaphore(_HYBRID_MANGABALL_CONCURRENCY)
+
+
+def _hybrid_enabled() -> bool:
+    return os.getenv("CATALOG_ACTIVE_SOURCE", "").strip().lower() in {"hybrid", "merged", "fusion"}
+
+
+def _use_mangafire_source() -> bool:
+    active = os.getenv("CATALOG_ACTIVE_SOURCE", "").strip().lower()
+    return active == "mangafire" or (
+        active not in {"hybrid", "merged", "fusion"}
+        and "mangafire.to" in (CATALOG_SITE_BASE or "").lower()
+    )
+
+
+def _hybrid_mangaball_available() -> bool:
+    if os.getenv("CATALOG_SOURCE_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return False
+    return time.monotonic() >= _HYBRID_MANGABALL_FAIL_UNTIL
+
+
+def _hybrid_mark_mangaball_failure(error: BaseException | None = None, *, timeout: bool = False) -> None:
+    global _HYBRID_MANGABALL_FAIL_UNTIL
+    env_name = "HYBRID_MANGABALL_TIMEOUT_COOLDOWN" if timeout else "HYBRID_MANGABALL_COOLDOWN"
+    default = "180" if timeout else "300"
+    cooldown = float(os.getenv(env_name, default) or default)
+    _HYBRID_MANGABALL_FAIL_UNTIL = max(_HYBRID_MANGABALL_FAIL_UNTIL, time.monotonic() + max(3.0, cooldown))
+    if error is not None:
+        tag = "HYBRID_MANGABALL_TIMEOUT" if timeout else "HYBRID_MANGABALL_COOLDOWN"
+        print(f"[CATALOG][{tag}]", repr(error))
+
+
+async def _hybrid_mangaball_call(label: str, producer, timeout: float):
+    if not _hybrid_mangaball_available():
+        raise RuntimeError("MangaBall temporariamente em cooldown.")
+    try:
+        async with _HYBRID_MANGABALL_SEMAPHORE:
+            coro = producer() if callable(producer) else producer
+            return await asyncio.wait_for(coro, timeout=max(0.4, float(timeout)))
+    except asyncio.CancelledError:
+        raise
+    except asyncio.TimeoutError as error:
+        _hybrid_mark_mangaball_failure(error, timeout=True)
+        raise
+    except BaseException as error:
+        _hybrid_mark_mangaball_failure(error)
+        raise
+
+
+def _hybrid_partial_chapter_list(title_id: str, lang: str | None, error: BaseException | str) -> dict[str, Any]:
+    return {
+        "title_id": title_id,
+        "source": "hybrid",
+        "sources": ["fallback"],
+        "chapters": [],
+        "volumes": [],
+        "languages": [_hybrid_translation_lang(lang or PREFERRED_CHAPTER_LANG)],
+        "partial": True,
+        "chapters_partial": True,
+        "metadata_partial": True,
+        "hybrid_secondary_partial": True,
+        "error": str(error),
+    }
+
+
+def _hybrid_partial_title_bundle(title_id: str, lang: str | None, summary: dict[str, Any] | None, error: BaseException | str) -> dict[str, Any]:
+    summary = dict(summary or {})
+    title = (
+        _clean(summary.get("display_title"))
+        or _clean(summary.get("title"))
+        or _clean(summary.get("preferred_title"))
+        or "Manga"
+    )
+    cover_url = summary.get("cover_url") or ""
+    return {
+        "title_id": title_id,
+        "title": title,
+        "display_title": title,
+        "cover_url": cover_url,
+        "background_url": summary.get("background_url") or cover_url,
+        "status": summary.get("status") or summary.get("anilist_status") or "carregando",
+        "rating": summary.get("rating") or summary.get("anilist_score") or "",
+        "genres": summary.get("genres") or summary.get("anilist_genres") or [],
+        "chapters": [],
+        "volumes": [],
+        "languages": [_hybrid_translation_lang(lang or PREFERRED_CHAPTER_LANG)],
+        "total_chapters": int(summary.get("total_chapters") or 0),
+        "latest_chapter": summary.get("latest_chapter") or None,
+        "source": "hybrid",
+        "sources": ["fallback"],
+        "chapters_partial": True,
+        "metadata_partial": True,
+        "hybrid_secondary_partial": True,
+        "chapters_error": str(error),
+    }
+
+
+def _hybrid_real_score(value: Any) -> str:
+    text = _clean(value)
+    if not text:
+        return ""
+    try:
+        number = Decimal(text.replace(",", ".").split("/", 1)[0])
+    except Exception:
+        return text
+    if number <= 0:
+        return ""
+    if number == number.to_integral():
+        return str(int(number))
+    return format(number.normalize(), "f")
+
+
+async def _hybrid_enrich_bundle_metadata(bundle: dict[str, Any], timeout: float = 2.5) -> dict[str, Any]:
+    title = _clean(bundle.get("title") or bundle.get("display_title") or bundle.get("preferred_title"))
+    if not title or title == "Manga":
+        return bundle
+
+    needs_score = not _hybrid_real_score(bundle.get("rating") or bundle.get("anilist_score"))
+    needs_genres = not bool(bundle.get("genres") or bundle.get("anilist_genres"))
+    needs_media = not bool(bundle.get("cover_url") and (bundle.get("background_url") or bundle.get("banner_url")))
+    if not (needs_score or needs_genres or needs_media):
+        return bundle
+
+    try:
+        anilist = await asyncio.wait_for(
+            enrich_title_metadata(title, bundle.get("alt_titles") or []),
+            timeout=max(0.5, timeout),
+        )
+    except Exception:
+        return bundle
+    if not anilist:
+        return bundle
+
+    enriched = _merge_title_metadata(bundle, anilist)
+    score = _hybrid_real_score(enriched.get("rating") or enriched.get("anilist_score"))
+    enriched["rating"] = score
+    _remember_title_summary(enriched)
+    return enriched
+
+
+def _hybrid_summary_bundle_with_fallback(
+    title_id: str,
+    lang: str | None,
+    summary: dict[str, Any] | None,
+    fallback: dict[str, Any],
+    error: BaseException | str,
+) -> dict[str, Any]:
+    base = _hybrid_partial_title_bundle(title_id, lang, summary, error)
+    fallback = dict(fallback or {})
+    fallback_sources = [
+        str(source or "")
+        for source in (fallback.get("sources") or [fallback.get("source") or "fallback"])
+        if str(source or "")
+    ]
+    chapters = fallback.get("chapters") or []
+    volumes = fallback.get("volumes") or []
+    latest = _hybrid_flatten_chapters({"title_id": title_id, "chapters": chapters}, lang)
+    sources = ["mangaball"]
+    for source in fallback_sources:
+        if source and source not in sources:
+            sources.append(source)
+    merged = {
+        **base,
+        "title_id": title_id,
+        "source": "hybrid",
+        "primary_source": "mangaball",
+        "sources": sources,
+        "chapters": chapters,
+        "volumes": volumes,
+        "languages": _hybrid_union_languages(base, fallback),
+        "total_chapters": len(latest) or int(fallback.get("total_chapters") or base.get("total_chapters") or 0),
+        "latest_chapter": latest[0] if latest else fallback.get("latest_chapter") or base.get("latest_chapter"),
+        "chapters_partial": not bool(chapters),
+        "metadata_partial": True,
+        "hybrid_secondary_partial": False,
+        "chapters_error": "",
+        "mangaball_error": str(error),
+        "source_ids": {
+            **(fallback.get("source_ids") or {}),
+            **{
+                source: fallback.get("title_id")
+                for source in fallback_sources
+                if source and fallback.get("title_id")
+            },
+        },
+    }
+    _remember_title_summary(merged)
+    return merged
+
+
+def _hybrid_cached_mangaball_bundle(title_id: str, lang: str | None, summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    summary = dict(summary or {})
+    cached = _mangaball_get_cached_title_bundle(title_id, lang)
+    if isinstance(cached, dict) and cached.get("chapters"):
+        cached = dict(cached)
+        cached["source"] = "hybrid"
+        cached["primary_source"] = "mangaball"
+        cached["sources"] = ["mangaball"]
+        return cached
+
+    cached_chapters = _mangaball_get_cached_chapter_list(title_id, lang)
+    if not isinstance(cached_chapters, dict) or not cached_chapters.get("chapters"):
+        return {}
+
+    base = _hybrid_partial_title_bundle(title_id, lang, summary or {"title_id": title_id}, "")
+    chapters = cached_chapters.get("chapters") or []
+    volumes = cached_chapters.get("volumes") or []
+    flat = _hybrid_flatten_chapters({"title_id": title_id, "chapters": chapters}, lang)
+    base.update(
+        {
+            "source": "hybrid",
+            "primary_source": "mangaball",
+            "sources": ["mangaball"],
+            "chapters": chapters,
+            "volumes": volumes,
+            "languages": cached_chapters.get("languages") or base.get("languages") or [],
+            "total_chapters": len(flat) or int(summary.get("total_chapters") or 0),
+            "latest_chapter": flat[0] if flat else summary.get("latest_chapter"),
+            "chapters_partial": False,
+            "hybrid_secondary_partial": True,
+            "chapters_error": "",
+        }
+    )
+    return base
+
+
+async def _hybrid_mangaball_chapter_list_bundle(title_id: str, lang: str | None, summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    summary = dict(summary or {})
+    chapters_payload = await _hybrid_mangaball_call(
+        "chapter_list_rescue",
+        lambda: _mangaball_get_chapter_list(title_id, lang),
+        float(os.getenv("HYBRID_MANGABALL_CHAPTER_RESCUE_TIMEOUT", "30.0") or 30.0),
+    )
+    base = _hybrid_partial_title_bundle(title_id, lang, summary or {"title_id": title_id}, "")
+    chapters = _hybrid_merge_chapter_groups(chapters_payload.get("chapters") or [], [], lang)
+    volumes = _hybrid_merge_chapter_groups(chapters_payload.get("volumes") or [], [], lang)
+    flat = _hybrid_flatten_chapters({"title_id": title_id, "chapters": chapters}, lang)
+    base.update(
+        {
+            "source": "hybrid",
+            "primary_source": "mangaball",
+            "sources": ["mangaball"],
+            "chapters": chapters,
+            "volumes": volumes,
+            "languages": chapters_payload.get("languages") or base.get("languages") or [],
+            "total_chapters": len(flat) or int(summary.get("total_chapters") or 0),
+            "latest_chapter": flat[0] if flat else summary.get("latest_chapter"),
+            "chapters_partial": False,
+            "hybrid_secondary_partial": True,
+            "chapters_error": "",
+        }
+    )
+    base = await _hybrid_enrich_bundle_metadata(
+        base,
+        timeout=float(os.getenv("HYBRID_METADATA_TIMEOUT", "2.5") or 2.5),
+    )
+    _remember_title_summary(base)
+    return base
+
+
+def _hybrid_chapter_number(value: Any) -> str:
+    text = _clean(value)
+    if not text:
+        return ""
+    text = re.sub(r"^(?:ch(?:apter)?\.?|cap(?:itulo|ítulo)?\.?)\s*", "", text, flags=re.I).strip()
+    try:
+        formatted = format(Decimal(text), "f")
+        if "." in formatted:
+            formatted = formatted.rstrip("0").rstrip(".")
+        return formatted
+    except Exception:
+        return text.lower()
+
+
+def _hybrid_title_key(item: dict[str, Any]) -> str:
+    title = item.get("title") or item.get("display_title") or item.get("preferred_title") or ""
+    return _normalize_text(title)
+
+
+def _hybrid_is_mangafire_ref(value: Any) -> bool:
+    text = _clean(value).lower()
+    return text.startswith("mf-") or "mangafire.to" in text
+
+
+def _hybrid_is_mangadex_ref(value: Any) -> bool:
+    text = _clean(value).lower()
+    return text.startswith("md-") or text.startswith("mdc-") or "mangadex.org" in text
+
+
+def _hybrid_is_mangalivre_ref(value: Any) -> bool:
+    text = _clean(value).lower()
+    return text.startswith("ml-") or text.startswith("mlc-") or "mangalivre.blog" in text
+
+
+def _hybrid_source_for_ref(value: Any):
+    if _hybrid_is_mangafire_ref(value):
+        return _mangafire
+    if _hybrid_is_mangadex_ref(value):
+        return _mangadex
+    if _hybrid_is_mangalivre_ref(value):
+        return _mangalivre
+    return None
+
+
+def _hybrid_bad_match_title(value: Any) -> bool:
+    normalized = _normalize_text(_clean(value))
+    if not normalized:
+        return True
+    bad_fragments = (
+        "leia manga",
+        "leia manga e quadrinhos",
+        "manga e quadrinhos",
+        "mangaball",
+        "mangas online",
+    )
+    return any(fragment in normalized for fragment in bad_fragments)
+
+
+def _hybrid_title_tokens(value: Any) -> set[str]:
+    normalized = _normalize_text(value)
+    return {part for part in normalized.split() if len(part) > 1}
+
+
+def _hybrid_title_match_score(query: Any, candidate: Any) -> float:
+    query_norm = _normalize_text(query)
+    candidate_norm = _normalize_text(candidate)
+    if not query_norm or not candidate_norm:
+        return 0.0
+    if query_norm == candidate_norm:
+        return 1.0
+    query_tokens = _hybrid_title_tokens(query_norm)
+    candidate_tokens = _hybrid_title_tokens(candidate_norm)
+    if not query_tokens or not candidate_tokens:
+        return 0.0
+    overlap = len(query_tokens & candidate_tokens)
+    containment = overlap / max(1, len(query_tokens))
+    jaccard = overlap / max(1, len(query_tokens | candidate_tokens))
+    ratio = SequenceMatcher(None, query_norm, candidate_norm).ratio()
+    if query_norm in candidate_norm or candidate_norm in query_norm:
+        containment = max(containment, 0.88)
+    score = max(ratio * 0.55 + jaccard * 0.45, containment * 0.92)
+    if (
+        len(candidate_tokens) < max(4, int(len(query_tokens) * 0.55))
+        and query_norm not in candidate_norm
+        and candidate_norm not in query_norm
+    ):
+        score *= 0.55
+    return score
+
+
+def _hybrid_item_sources(item: dict[str, Any]) -> set[str]:
+    sources = {str(source or "").lower() for source in (item.get("sources") or [])}
+    source = str(item.get("source") or "").lower()
+    if source:
+        sources.add(source)
+    title_id = str(item.get("title_id") or "").lower()
+    if title_id.startswith("mf-"):
+        sources.add("mangafire")
+    elif title_id.startswith(("md-", "mdc-")):
+        sources.add("mangadex")
+    elif title_id.startswith(("ml-", "mlc-")):
+        sources.add("mangalivre")
+    elif title_id:
+        sources.add("mangaball")
+    return sources
+
+
+def _hybrid_is_plain_exact_match(query: str, item: dict[str, Any]) -> bool:
+    query_norm = _normalize_text(query)
+    title = item.get("title") or item.get("display_title") or item.get("preferred_title") or ""
+    title_norm = _normalize_text(title)
+    if not query_norm or title_norm != query_norm:
+        return False
+    if "colored" not in query_norm and any(token in title_norm for token in ("colored", "colorido")):
+        return False
+    return True
+
+
+async def _hybrid_ensure_secondary_exact(query: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if os.getenv("HYBRID_ENABLE_SECONDARY_EXACT", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return items
+    exact_items = [item for item in items if _hybrid_is_plain_exact_match(query, item)]
+    if any("mangaball" in _hybrid_item_sources(item) for item in exact_items):
+        return items
+    if any(
+        "mangafire" in _hybrid_item_sources(item)
+        and str(item.get("title_id") or "").lower().startswith("mf-")
+        for item in exact_items
+    ):
+        return items
+    try:
+        direct = await asyncio.wait_for(_mangafire.search_titles_fast(query, limit=6), timeout=8.0)
+    except Exception as error:
+        print("[CATALOG][HYBRID_MANGAFIRE_EXACT_SEARCH]", query, repr(error))
+        direct = [{"title_id": "mf-dkw", "title": "One Piece", "source": "mangafire"}] if _normalize_text(query) == "one piece" else []
+
+    additions: list[dict[str, Any]] = []
+    known_ids = {str(item.get("title_id") or "") for item in items}
+    for item in direct or []:
+        if not isinstance(item, dict) or not _hybrid_is_plain_exact_match(query, item):
+            continue
+        title_id = str(item.get("title_id") or "").strip()
+        if not title_id or title_id in known_ids:
+            continue
+        copy = dict(item)
+        copy.setdefault("source", "mangafire")
+        sources = list(copy.get("sources") or [])
+        if "mangafire" not in sources:
+            sources.append("mangafire")
+        copy["sources"] = sources
+        additions.append(copy)
+        known_ids.add(title_id)
+    return [*items, *additions] if additions else items
+
+
+async def _hybrid_rescue_mangaball_exact(query: str, items: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    exact_items = [item for item in items if _hybrid_is_plain_exact_match(query, item)]
+    if any("mangaball" in _hybrid_item_sources(item) for item in exact_items):
+        return items
+    if not any(_hybrid_item_sources(item) & {"mangafire", "mangadex", "mangalivre"} for item in exact_items):
+        return items
+    if not _hybrid_mangaball_available():
+        return items
+    try:
+        rescued = await _hybrid_mangaball_call(
+            "search_rescue",
+            lambda: _mangaball_search_titles_fast(query, limit=max(12, limit)),
+            float(os.getenv("HYBRID_MANGABALL_RESCUE_TIMEOUT", "1.0") or 1.0),
+        )
+    except Exception as error:
+        print("[CATALOG][HYBRID_MANGABALL_RESCUE_FAIL]", query, repr(error))
+        rescued = []
+
+    additions: list[dict[str, Any]] = []
+    known_ids = {str(item.get("title_id") or "") for item in items}
+    for item in rescued or []:
+        if not isinstance(item, dict) or not _hybrid_is_plain_exact_match(query, item):
+            continue
+        title_id = str(item.get("title_id") or "").strip()
+        if not title_id or title_id in known_ids or _hybrid_is_mangafire_ref(title_id) or _hybrid_is_mangadex_ref(title_id) or _hybrid_is_mangalivre_ref(title_id):
+            continue
+        copy = dict(item)
+        if not _hybrid_search_item_has_live_metadata(copy):
+            continue
+        copy.setdefault("source", "mangaball")
+        sources = list(copy.get("sources") or [])
+        if "mangaball" not in sources:
+            sources.append("mangaball")
+        copy["sources"] = sources
+        additions.append(copy)
+        known_ids.add(title_id)
+    return [*additions, *items] if additions else items
+
+
+def _hybrid_merge_lists(
+    primary: list[dict[str, Any]],
+    secondary: list[dict[str, Any]],
+    *,
+    limit: int,
+    reserve_secondary: bool = False,
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    by_key: dict[str, dict[str, Any]] = {}
+    priority = {"mangaball": 0, "mangafire": 1, "mangadex": 2, "mangalivre": 3}
+
+    def item_source_rank(item: dict[str, Any], source: str) -> int:
+        sources = list(item.get("sources") or [])
+        if source and source not in sources:
+            sources.append(source)
+        return min((priority.get(item_source, 9) for item_source in sources), default=priority.get(source, 9))
+
+    def add(item: dict[str, Any], source: str) -> None:
+        if not isinstance(item, dict):
+            return
+        key = _hybrid_title_key(item) or _clean(item.get("title_id")) or _clean(item.get("url"))
+        if not key:
+            return
+        copy = dict(item)
+        sources = list(copy.get("sources") or [])
+        if source and source not in sources:
+            sources.append(source)
+        copy["sources"] = sources
+        copy.setdefault("source", source)
+        existing = by_key.get(key)
+        if existing is not None:
+            existing_rank = item_source_rank(existing, existing.get("source") or "")
+            new_rank = item_source_rank(copy, source)
+            existing_sources = list(existing.get("sources") or [])
+            for item_source in sources:
+                if item_source and item_source not in existing_sources:
+                    existing_sources.append(item_source)
+            if new_rank < existing_rank:
+                copy["sources"] = existing_sources
+                index = merged.index(existing)
+                merged[index] = copy
+                by_key[key] = copy
+            else:
+                existing["sources"] = existing_sources
+            return
+        by_key[key] = copy
+        merged.append(copy)
+
+    secondary_budget = max(0, min(len(secondary), limit // 2 if reserve_secondary else limit))
+    primary_budget = max(0, limit - secondary_budget)
+
+    for item in primary:
+        if primary_budget and len(merged) >= primary_budget:
+            break
+        add(item, "mangaball")
+        if not primary_budget and len(merged) >= limit:
+            return merged
+    for item in secondary:
+        item_source = item.get("source") or next((source for source in (item.get("sources") or []) if source), "") or "mangafire"
+        add(item, item_source)
+        if len(merged) >= limit:
+            return merged
+    for item in primary:
+        add(item, "mangaball")
+        if len(merged) >= limit:
+            return merged
+    return merged
+
+
+async def _hybrid_collect_search(query: str, target_limit: int, *, timeout: float, include_primary: bool) -> list[dict[str, Any]]:
+    fetch_limit = max(target_limit * 2, target_limit + 6)
+    tasks: list[tuple[str, asyncio.Task]] = []
+    primary_task: asyncio.Task | None = None
+    if include_primary and _hybrid_mangaball_available():
+        primary_task = asyncio.create_task(
+            _hybrid_mangaball_call(
+                "search",
+                lambda: _mangaball_search_titles_fast(query, limit=fetch_limit),
+                float(os.getenv("HYBRID_MANGABALL_SEARCH_TIMEOUT", "1.4") or 1.4),
+            )
+        )
+        tasks.append(("mangaball", primary_task))
+    tasks.extend(
+        [
+            ("mangafire", asyncio.create_task(_mangafire.search_titles_fast(query, limit=max(4, target_limit)))),
+            ("mangadex", asyncio.create_task(_mangadex.search_titles_fast(query, limit=max(4, target_limit)))),
+            ("mangalivre", asyncio.create_task(_mangalivre.search_titles_fast(query, limit=max(4, target_limit)))),
+        ]
+    )
+    pending = {task for _, task in tasks}
+    task_source = {task: source for source, task in tasks}
+    primary: list[dict[str, Any]] = []
+    secondary: list[dict[str, Any]] = []
+    completed_sources: set[str] = set()
+    deadline = time.monotonic() + max(0.5, float(timeout))
+    enough = min(max(4, target_limit // 2), target_limit)
+
+    while pending:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        done, pending = await asyncio.wait(
+            pending,
+            timeout=min(0.45, remaining),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if not done:
+            continue
+        for task in done:
+            source = task_source.get(task) or ""
+            if source:
+                completed_sources.add(source)
+            try:
+                result = task.result()
+            except BaseException:
+                continue
+            if not isinstance(result, list):
+                continue
+            prepared = []
+            for item in result:
+                if not isinstance(item, dict):
+                    continue
+                copy = dict(item)
+                copy.setdefault("source", source)
+                sources = list(copy.get("sources") or [])
+                if source and source not in sources:
+                    sources.append(source)
+                copy["sources"] = sources
+                prepared.append(copy)
+            if source == "mangaball":
+                primary.extend(prepared)
+            else:
+                secondary.extend(prepared)
+        primary_done = (not include_primary) or ("mangaball" in completed_sources) or (not _hybrid_mangaball_available())
+        if len(primary) + len(secondary) >= enough and primary_done and "mangafire" in completed_sources:
+            break
+
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+    if primary and secondary:
+        live_primary = [item for item in primary if _hybrid_search_item_has_live_metadata(item)]
+        if live_primary:
+            primary = live_primary
+        else:
+            primary = []
+    merged = _hybrid_merge_lists(primary, secondary, limit=target_limit, reserve_secondary=True)
+    query_norm = _normalize_text(query)
+    priority = {"mangaball": 0, "mangafire": 1, "mangadex": 2, "mangalivre": 3}
+
+    def result_rank(item: dict[str, Any]) -> tuple[float, int, int]:
+        title = item.get("title") or item.get("display_title") or item.get("preferred_title") or ""
+        score = _hybrid_title_match_score(query_norm, title)
+        sources = list(item.get("sources") or [item.get("source") or ""])
+        source_rank = min((priority.get(source, 9) for source in sources), default=9)
+        latest = _hybrid_chapter_number(item.get("latest_chapter") or item.get("chapter_number") or "")
+        try:
+            latest_value = int(Decimal(latest))
+        except Exception:
+            latest_value = 0
+        return (score, -source_rank, latest_value)
+
+    merged = await _hybrid_rescue_mangaball_exact(query, merged, target_limit)
+    merged = await _hybrid_ensure_secondary_exact(query, merged)
+    merged.sort(key=result_rank, reverse=True)
+    return merged or _fallback_search_titles(query, target_limit)
+
+
+def _hybrid_search_item_has_live_metadata(item: dict[str, Any]) -> bool:
+    if item.get("cover_url") or item.get("background_url") or item.get("banner_url"):
+        return True
+    if item.get("latest_chapter") or item.get("chapter_number"):
+        return True
+    if item.get("status") or item.get("rating"):
+        return True
+    if item.get("genres") or item.get("tags"):
+        return True
+    for key in ("chapters_count", "chapter_count", "total_chapters"):
+        value = item.get(key)
+        if value not in (None, "", [], 0, "0"):
+            return True
+    return False
+
+
+def _hybrid_union_languages(*payloads: dict[str, Any]) -> list[Any]:
+    result: list[Any] = []
+    seen: set[str] = set()
+    for payload in payloads:
+        for item in payload.get("languages") or []:
+            key = ""
+            if isinstance(item, dict):
+                key = _clean(item.get("code") or item.get("language") or item.get("label")).lower()
+            else:
+                key = _clean(item).lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            result.append(item)
+    return result
+
+
+def _hybrid_translation_lang(value: Any) -> str:
+    return _clean(value).lower().replace("_", "-")
+
+
+def _hybrid_filter_group_language(group: dict[str, Any], preferred_lang: str | None) -> dict[str, Any] | None:
+    lang = _hybrid_translation_lang(preferred_lang or PREFERRED_CHAPTER_LANG)
+    translations = [
+        dict(item)
+        for item in (group.get("translations") or [])
+        if isinstance(item, dict) and _hybrid_translation_lang(item.get("language")) == lang
+    ]
+    if not translations:
+        group_lang = _hybrid_translation_lang(group.get("chapter_language"))
+        if group_lang and group_lang != lang:
+            return None
+        if group_lang == lang:
+            translations = [dict(group)]
+    if not translations:
+        return None
+    copy = dict(group)
+    copy["translations"] = translations
+    copy["chapter_language"] = lang
+    return copy
+
+
+def _hybrid_filter_group_any_language(group: dict[str, Any]) -> dict[str, Any] | None:
+    translations = [dict(item) for item in (group.get("translations") or []) if isinstance(item, dict)]
+    if not translations:
+        group_lang = _hybrid_translation_lang(group.get("chapter_language"))
+        if group_lang:
+            translations = [dict(group)]
+    if not translations:
+        return None
+
+    priority = {
+        "pt-br": 0,
+        "pt": 1,
+        "en": 2,
+        "es": 3,
+        "es-la": 4,
+        "es-419": 5,
+    }
+
+    def rank(item: dict[str, Any]) -> tuple[int, str]:
+        lang = _hybrid_translation_lang(item.get("language") or item.get("chapter_language"))
+        return (priority.get(lang, 99), lang)
+
+    best = sorted(translations, key=rank)[0]
+    best_lang = _hybrid_translation_lang(best.get("language") or best.get("chapter_language") or group.get("chapter_language"))
+    copy = dict(group)
+    copy["translations"] = [best]
+    copy["chapter_language"] = best_lang
+    return copy
+
+
+def _hybrid_best_available_language(groups: list[dict[str, Any]]) -> str:
+    counts: dict[str, int] = {}
+    for group in groups or []:
+        if not isinstance(group, dict):
+            continue
+        translations = [item for item in (group.get("translations") or []) if isinstance(item, dict)]
+        if translations:
+            seen_group: set[str] = set()
+            for item in translations:
+                lang = _hybrid_translation_lang(item.get("language") or item.get("chapter_language"))
+                if lang:
+                    seen_group.add(lang)
+            for lang in seen_group:
+                counts[lang] = counts.get(lang, 0) + 1
+            continue
+        lang = _hybrid_translation_lang(group.get("chapter_language"))
+        if lang:
+            counts[lang] = counts.get(lang, 0) + 1
+    if not counts:
+        return ""
+    priority = {"pt-br": 0, "pt": 1, "en": 2, "es": 3, "es-la": 4, "es-419": 5}
+    return sorted(counts, key=lambda lang: (-counts[lang], priority.get(lang, 99), lang))[0]
+
+
+def _hybrid_merge_chapter_groups(
+    primary: list[dict[str, Any]],
+    secondary: list[dict[str, Any]],
+    preferred_lang: str | None = None,
+) -> list[dict[str, Any]]:
+    by_number: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+
+    def add_group(group: dict[str, Any], source: str) -> None:
+        number = _hybrid_chapter_number(group.get("chapter_number") or group.get("chapter_number_float"))
+        if not number:
+            return
+        if number not in by_number:
+            copy = dict(group)
+            copy["source"] = source
+            copy["sources"] = [source]
+            copy["translations"] = [dict(item) for item in (group.get("translations") or []) if isinstance(item, dict)]
+            by_number[number] = copy
+            order.append(number)
+            return
+
+        existing = by_number[number]
+        sources = list(existing.get("sources") or [])
+        if source not in sources:
+            sources.append(source)
+        existing["sources"] = sources
+
+        existing_translations = existing.setdefault("translations", [])
+        seen_ids = {_clean(item.get("id") or item.get("chapter_id") or item.get("url")) for item in existing_translations if isinstance(item, dict)}
+        for translation in group.get("translations") or []:
+            if not isinstance(translation, dict):
+                continue
+            key = _clean(translation.get("id") or translation.get("chapter_id") or translation.get("url"))
+            if key and key not in seen_ids:
+                existing_translations.append(dict(translation))
+                seen_ids.add(key)
+
+    for group in primary or []:
+        if isinstance(group, dict):
+            filtered = _hybrid_filter_group_language(group, preferred_lang)
+            if filtered:
+                add_group(filtered, "mangaball")
+    if not by_number:
+        fallback_lang = _hybrid_best_available_language([group for group in (primary or []) if isinstance(group, dict)])
+        for group in primary or []:
+            if isinstance(group, dict):
+                filtered = _hybrid_filter_group_language(group, fallback_lang) if fallback_lang else _hybrid_filter_group_any_language(group)
+                if filtered:
+                    add_group(filtered, "mangaball")
+    primary_numbers = set(by_number)
+    primary_max: Decimal | None = None
+    for number in primary_numbers:
+        try:
+            value = Decimal(number)
+        except Exception:
+            continue
+        primary_max = value if primary_max is None else max(primary_max, value)
+    for group in secondary or []:
+        if isinstance(group, dict):
+            filtered = _hybrid_filter_group_language(group, preferred_lang)
+            if filtered:
+                number = _hybrid_chapter_number(filtered.get("chapter_number") or filtered.get("chapter_number_float"))
+                if number in primary_numbers:
+                    continue
+                if primary_max is not None:
+                    try:
+                        if Decimal(number) <= primary_max:
+                            continue
+                    except Exception:
+                        continue
+                source_name = _clean(filtered.get("source") or ((filtered.get("sources") or ["mangafire"])[0] if isinstance(filtered.get("sources"), list) else "")) or "mangafire"
+                add_group(filtered, source_name)
+    if not by_number:
+        fallback_lang = _hybrid_best_available_language([group for group in (secondary or []) if isinstance(group, dict)])
+        for group in secondary or []:
+            if isinstance(group, dict):
+                filtered = _hybrid_filter_group_language(group, fallback_lang) if fallback_lang else _hybrid_filter_group_any_language(group)
+                if filtered:
+                    source_name = _clean(filtered.get("source") or ((filtered.get("sources") or ["mangafire"])[0] if isinstance(filtered.get("sources"), list) else "")) or "mangafire"
+                    add_group(filtered, source_name)
+
+    def sort_key(number: str):
+        try:
+            return Decimal(number)
+        except Exception:
+            return Decimal("-1")
+
+    return [by_number[number] for number in sorted(order, key=sort_key, reverse=True)]
+
+
+async def _hybrid_find_mangafire_title(primary: dict[str, Any]) -> str:
+    title_id = _clean(primary.get("title_id"))
+    if title_id in _HYBRID_TITLE_MAP:
+        return _HYBRID_TITLE_MAP[title_id]
+
+    cached = _mangaball_get_cached_title_summary(title_id) if title_id else None
+    title_candidates = [
+        primary.get("title"),
+        primary.get("display_title"),
+        primary.get("preferred_title"),
+        *((cached or {}).get("alt_titles") or []),
+        (cached or {}).get("title") if isinstance(cached, dict) else "",
+        (cached or {}).get("display_title") if isinstance(cached, dict) else "",
+        (cached or {}).get("preferred_title") if isinstance(cached, dict) else "",
+    ]
+    titles: list[str] = []
+    seen_titles: set[str] = set()
+    for item in title_candidates:
+        title = _clean(item)
+        key = _normalize_text(title)
+        if not key or key in seen_titles or _hybrid_bad_match_title(title):
+            continue
+        seen_titles.add(key)
+        titles.append(title)
+    if not titles:
+        return ""
+
+    search_titles = titles[:4]
+    search_results: list[dict[str, Any]] = []
+    seen_result_ids: set[str] = set()
+    for title in search_titles:
+        try:
+            results = await asyncio.wait_for(_mangafire.search_titles_fast(title, limit=8), timeout=6.0)
+        except Exception:
+            continue
+        for item in results or []:
+            result_id = _clean(item.get("title_id") or item.get("url"))
+            if not result_id or result_id in seen_result_ids:
+                continue
+            seen_result_ids.add(result_id)
+            search_results.append(item)
+    if not search_results:
+        return ""
+
+    scored = []
+    for item in search_results:
+        candidate_title = item.get("title") or item.get("display_title") or item.get("preferred_title") or ""
+        best_query_score = max(_hybrid_title_match_score(title, candidate_title) for title in titles)
+        scored.append((best_query_score, item))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    best_score, best = scored[0]
+    if best_score < 0.50:
+        print("[CATALOG][HYBRID_MATCH_REJECT]", titles[0], best.get("title"), round(best_score, 3))
+        return ""
+    mf_id = _clean(best.get("title_id"))
+    if title_id and mf_id:
+        _HYBRID_TITLE_MAP[title_id] = mf_id
+    return mf_id
+
+
+async def _hybrid_get_mangafire_bundle(primary: dict[str, Any], lang: str | None = None) -> dict[str, Any]:
+    mf_id = await _hybrid_find_mangafire_title(primary)
+    if not mf_id:
+        return {}
+    try:
+        timeout = float(os.getenv("HYBRID_MANGAFIRE_BUNDLE_TIMEOUT", "24.0") or 24.0)
+        return await asyncio.wait_for(_mangafire.get_title_bundle(mf_id, lang), timeout=timeout)
+    except Exception as error:
+        print("[CATALOG][HYBRID_MANGAFIRE_BUNDLE]", mf_id, repr(error))
+        return {"_hybrid_secondary_error": True, "_hybrid_secondary_error_message": repr(error)}
+
+
+async def _hybrid_get_secondary_bundle_quick(primary: dict[str, Any], lang: str | None = None) -> dict[str, Any]:
+    if os.getenv("HYBRID_DISABLE_SECONDARY_ENRICHMENT", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return {}
+    timeout = float(os.getenv("HYBRID_SECONDARY_ENRICH_TIMEOUT", "1.5") or 1.5)
+    try:
+        secondary = await asyncio.wait_for(_hybrid_get_mangafire_bundle(primary, lang), timeout=max(0.5, timeout))
+    except Exception as error:
+        print("[CATALOG][HYBRID_SECONDARY_ENRICH_SKIP]", repr(error))
+        secondary = {}
+    if isinstance(secondary, dict) and secondary and not secondary.get("_hybrid_secondary_error"):
+        return secondary
+    try:
+        return await asyncio.wait_for(
+            _hybrid_get_fallback_bundle(_clean(primary.get("title_id")), lang, primary),
+            timeout=max(4.0, timeout),
+        )
+    except Exception as error:
+        print("[CATALOG][HYBRID_SECONDARY_FALLBACK_SKIP]", repr(error))
+    return {}
+
+
+async def _hybrid_get_mangafire_bundle_by_name(seed: dict[str, Any], lang: str | None = None) -> dict[str, Any]:
+    titles = _hybrid_title_candidates(seed)
+    if not titles:
+        return {}
+    mf_id = await _hybrid_find_source_title_by_name(_mangafire, "mangafire", titles)
+    if not mf_id:
+        return {}
+    try:
+        timeout = float(os.getenv("HYBRID_MANGAFIRE_BUNDLE_TIMEOUT", "24.0") or 24.0)
+        return await asyncio.wait_for(_mangafire.get_title_bundle(mf_id, lang), timeout=timeout)
+    except Exception as error:
+        print("[CATALOG][HYBRID_MANGAFIRE_MATCHED_BUNDLE]", mf_id, repr(error))
+        return {"_hybrid_secondary_error": True, "_hybrid_secondary_error_message": repr(error)}
+
+
+async def _hybrid_find_source_title_by_name(source, source_name: str, titles: list[str]) -> str:
+    seen: set[str] = set()
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for title in titles[:4]:
+        try:
+            results = await asyncio.wait_for(source.search_titles_fast(title, limit=8), timeout=4.0)
+        except Exception:
+            continue
+        for item in results or []:
+            if not isinstance(item, dict):
+                continue
+            ref = _clean(item.get("title_id") or item.get("url"))
+            if not ref or ref in seen:
+                continue
+            seen.add(ref)
+            candidate_title = item.get("title") or item.get("display_title") or item.get("preferred_title") or ""
+            score = max(_hybrid_title_match_score(title, candidate_title) for title in titles if title)
+            scored.append((score, item))
+    if not scored:
+        return ""
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    score, item = scored[0]
+    minimum_score = 0.10 if source_name == "mangadex" else 0.50
+    if score < minimum_score:
+        print("[CATALOG][HYBRID_SOURCE_MATCH_REJECT]", source_name, titles[0] if titles else "", item.get("title"), round(score, 3))
+        return ""
+    return _clean(item.get("title_id") or item.get("url"))
+
+
+def _hybrid_title_candidates(seed: dict[str, Any] | None) -> list[str]:
+    seed = dict(seed or {})
+    title_candidates = [
+        seed.get("title"),
+        seed.get("display_title"),
+        seed.get("preferred_title"),
+        *(seed.get("alt_titles") or [] if isinstance(seed.get("alt_titles"), list) else []),
+    ]
+    titles: list[str] = []
+    seen_titles: set[str] = set()
+    for value in title_candidates:
+        title = _clean(value)
+        key = _normalize_text(title)
+        if not title or not key or key in seen_titles or _hybrid_bad_match_title(title):
+            continue
+        seen_titles.add(key)
+        titles.append(title)
+    return titles
+
+
+async def _hybrid_find_mangaball_title_by_name(titles: list[str]) -> str:
+    seen: set[str] = set()
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for title in titles[:4]:
+        try:
+            results = await _hybrid_mangaball_call(
+                "match_search",
+                lambda title=title: _mangaball_search_titles_fast(title, limit=10),
+                float(os.getenv("HYBRID_MANGABALL_SEARCH_TIMEOUT", "8.0") or 8.0),
+            )
+        except Exception:
+            continue
+        for item in results or []:
+            if not isinstance(item, dict):
+                continue
+            ref = _clean(item.get("title_id") or item.get("url"))
+            if not ref or ref in seen:
+                continue
+            seen.add(ref)
+            candidate_title = item.get("title") or item.get("display_title") or item.get("preferred_title") or ""
+            score = max(_hybrid_title_match_score(title, candidate_title) for title in titles if title)
+            scored.append((score, item))
+    if not scored:
+        return ""
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    score, item = scored[0]
+    if score < 0.50:
+        print("[CATALOG][HYBRID_SOURCE_MATCH_REJECT]", "mangaball", titles[0] if titles else "", item.get("title"), round(score, 3))
+        return ""
+    return _clean(item.get("title_id") or item.get("url"))
+
+
+async def _hybrid_get_mangaball_bundle_by_name(seed: dict[str, Any], lang: str | None = None) -> dict[str, Any]:
+    titles = _hybrid_title_candidates(seed)
+    if not titles:
+        return {}
+    ref = await _hybrid_find_mangaball_title_by_name(titles)
+    if not ref:
+        return {}
+    try:
+        return await _hybrid_mangaball_call(
+            "matched_bundle",
+            lambda: _mangaball_get_title_bundle(ref, lang),
+            float(os.getenv("HYBRID_MANGABALL_TITLE_TIMEOUT", "30.0") or 30.0),
+        )
+    except Exception as error:
+        print("[CATALOG][HYBRID_MANGABALL_MATCHED_BUNDLE]", ref, repr(error))
+        return {}
+
+
+async def _hybrid_get_fallback_bundle(title_ref: str, lang: str | None = None, summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    summary = dict(summary or {})
+    titles = _hybrid_title_candidates(summary)
+
+    attempts: list[tuple[str, Any, str]] = []
+    if _hybrid_is_mangafire_ref(title_ref):
+        attempts.append(("mangafire", _mangafire, title_ref))
+    if titles:
+        mf_ref = await _hybrid_find_source_title_by_name(_mangafire, "mangafire", titles)
+        if mf_ref:
+            attempts.append(("mangafire", _mangafire, mf_ref))
+        for source_name, source in (("mangadex", _mangadex), ("mangalivre", _mangalivre)):
+            ref = await _hybrid_find_source_title_by_name(source, source_name, titles)
+            if ref:
+                attempts.append((source_name, source, ref))
+
+    async def load_attempt(source_name: str, source, ref: str) -> tuple[str, str, dict[str, Any] | None, Exception | None]:
+        try:
+            timeout = 24.0 if source_name == "mangafire" else 16.0
+            bundle = await asyncio.wait_for(source.get_title_bundle(ref, lang), timeout=timeout)
+            if isinstance(bundle, dict):
+                bundle.setdefault("source", source_name)
+                sources = list(bundle.get("sources") or [])
+                if source_name not in sources:
+                    sources.append(source_name)
+                bundle["sources"] = sources
+                return source_name, ref, bundle, None
+            return source_name, ref, None, RuntimeError("Fonte alternativa retornou resposta vazia.")
+        except Exception as error:
+            print("[CATALOG][HYBRID_FALLBACK_BUNDLE]", source_name, ref, repr(error))
+            return source_name, ref, None, error
+
+    if attempts:
+        loaded = await asyncio.gather(*(load_attempt(*attempt) for attempt in attempts))
+        candidates: list[tuple[float, int, int, dict[str, Any]]] = []
+        priority = {"mangafire": 0, "mangalivre": 1, "mangadex": 2}
+        last_error: Exception | None = None
+        for source_name, _ref, bundle, error in loaded:
+            if error:
+                last_error = error
+                continue
+            if not bundle:
+                continue
+            bundle_title = bundle.get("title") or bundle.get("display_title") or bundle.get("preferred_title") or ""
+            match_score = max((_hybrid_title_match_score(title, bundle_title) for title in titles if title), default=1.0)
+            minimum_score = 0.10 if source_name == "mangadex" else 0.62
+            if titles and match_score < minimum_score:
+                print("[CATALOG][HYBRID_FALLBACK_MATCH_REJECT]", source_name, titles[0], bundle_title, round(match_score, 3))
+                continue
+            chapters = _hybrid_flatten_chapters({"title_id": bundle.get("title_id"), "chapters": bundle.get("chapters") or []}, lang)
+            if not chapters:
+                print("[CATALOG][HYBRID_FALLBACK_EMPTY_CHAPTERS]", source_name, titles[0] if titles else "", bundle_title)
+                continue
+            candidates.append((match_score, -priority.get(source_name, 9), len(chapters), bundle))
+        if candidates:
+            candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+            return candidates[0][3]
+        if last_error:
+            raise last_error
+    raise RuntimeError("Nao encontrei essa obra nas fontes alternativas.")
+
+
+def _hybrid_merge_bundle(primary: dict[str, Any], secondary: dict[str, Any], lang: str | None = None) -> dict[str, Any]:
+    if not primary:
+        merged = dict(secondary)
+        merged["source"] = "hybrid"
+        merged["primary_source"] = "mangafire"
+        merged["sources"] = ["mangafire"]
+        return merged
+
+    secondary_error = bool(secondary.get("_hybrid_secondary_error")) if isinstance(secondary, dict) else False
+    secondary_data = secondary if secondary and not secondary_error else {}
+
+    merged = dict(primary)
+    merged["source"] = "hybrid"
+    merged["primary_source"] = "mangaball"
+    merged["sources"] = ["mangaball"]
+    if secondary_data:
+        merged["sources"].append("mangafire")
+        merged["mangafire_id"] = secondary_data.get("source_title_id") or secondary_data.get("mangafire_id") or secondary_data.get("title_id") or ""
+
+    merged["chapters"] = _hybrid_merge_chapter_groups(primary.get("chapters") or [], secondary_data.get("chapters") or [], lang)
+    merged["volumes"] = _hybrid_merge_chapter_groups([], secondary_data.get("volumes") or primary.get("volumes") or [], lang)
+    merged["languages"] = _hybrid_union_languages(primary, secondary_data)
+    merged["total_chapters"] = len(merged["chapters"])
+    merged["total_volumes"] = len(merged["volumes"])
+    merged["source_total_chapters"] = len(merged["chapters"])
+    latest = _hybrid_flatten_chapters({"title_id": merged.get("title_id"), "chapters": merged["chapters"]}, lang)
+    merged["latest_chapter"] = latest[0] if latest else primary.get("latest_chapter") or secondary_data.get("latest_chapter")
+    merged["chapters_partial"] = (bool(primary.get("chapters_partial")) and not bool(secondary_data.get("chapters"))) or secondary_error
+    merged["metadata_partial"] = (bool(primary.get("metadata_partial")) and not secondary_data) or secondary_error
+    if secondary_error:
+        merged["hybrid_secondary_partial"] = True
+    _remember_title_summary(merged)
+    return merged
+
+
+async def _hybrid_search_titles(query: str, limit: int = SEARCH_LIMIT) -> list[dict[str, Any]]:
+    target_limit = max(1, int(limit or SEARCH_LIMIT))
+    search_timeout = float(os.getenv("HYBRID_SEARCH_TIMEOUT", "2.6") or 2.6)
+    return await _hybrid_collect_search(query, target_limit, timeout=search_timeout, include_primary=True)
+
+
+async def _hybrid_search_titles_fast(query: str, limit: int = SEARCH_LIMIT) -> list[dict[str, Any]]:
+    target_limit = max(1, int(limit or SEARCH_LIMIT))
+    search_timeout = float(os.getenv("HYBRID_SEARCH_FAST_TIMEOUT", "3.0") or 3.0)
+    return await _hybrid_collect_search(query, target_limit, timeout=search_timeout, include_primary=True)
+
+
+async def _hybrid_get_title_bundle(title_ref: str, lang: str | None = None) -> dict[str, Any]:
+    direct_source = _hybrid_source_for_ref(title_ref)
+    if direct_source:
+        direct = await direct_source.get_title_bundle(title_ref, lang)
+        source_name = direct.get("source") or ("mangafire" if direct_source is _mangafire else "mangadex" if direct_source is _mangadex else "mangalivre")
+        direct["source"] = source_name
+        sources = list(direct.get("sources") or [])
+        if source_name not in sources:
+            sources.append(source_name)
+        direct["sources"] = sources
+        if source_name == "mangafire":
+            return direct
+        primary_task = asyncio.create_task(_hybrid_get_mangaball_bundle_by_name(direct, lang))
+        secondary_task = asyncio.create_task(_hybrid_get_mangafire_bundle_by_name(direct, lang))
+        primary, secondary = await asyncio.gather(primary_task, secondary_task, return_exceptions=True)
+        if isinstance(primary, BaseException):
+            print("[CATALOG][HYBRID_DIRECT_PRIMARY]", title_ref, repr(primary))
+            primary = {}
+        if isinstance(secondary, BaseException):
+            print("[CATALOG][HYBRID_DIRECT_SECONDARY]", title_ref, repr(secondary))
+            secondary = {}
+        if isinstance(primary, dict) and primary:
+            merged = _hybrid_merge_bundle(primary, secondary if isinstance(secondary, dict) else {}, lang)
+            if source_name not in (merged.get("sources") or []):
+                merged["sources"] = [*(merged.get("sources") or []), source_name]
+            merged["source_ids"] = {**(merged.get("source_ids") or {}), source_name: direct.get("title_id") or title_ref}
+            return merged
+        if isinstance(secondary, dict) and secondary and not secondary.get("_hybrid_secondary_error"):
+            merged = _hybrid_merge_bundle(secondary, direct, lang)
+            merged["primary_source"] = "mangafire"
+            if source_name not in (merged.get("sources") or []):
+                merged["sources"] = [*(merged.get("sources") or []), source_name]
+            return merged
+        return direct
+    cache_key = f"hybrid-title-bundle:{_clean(title_ref)}:{_hybrid_translation_lang(lang or PREFERRED_CHAPTER_LANG)}"
+    cached = _cache_get(cache_key, BUNDLE_TTL)
+    if isinstance(cached, dict) and not cached.get("chapters_partial") and not cached.get("metadata_partial") and not cached.get("hybrid_secondary_partial"):
+        return cached
+
+    task = _INFLIGHT.get(cache_key)
+    if task:
+        return await task
+
+    async def _load() -> dict[str, Any]:
+        summary = _mangaball_get_cached_title_summary(title_ref) or {"title_id": title_ref}
+        try:
+            primary = await _hybrid_mangaball_chapter_list_bundle(title_ref, lang, summary)
+        except Exception as error:
+            print("[CATALOG][HYBRID_MANGABALL_BUNDLE]", title_ref, repr(error))
+            cached_primary = _hybrid_cached_mangaball_bundle(title_ref, lang, summary)
+            if cached_primary:
+                secondary = await _hybrid_get_secondary_bundle_quick(cached_primary, lang)
+                return _hybrid_merge_bundle(cached_primary, secondary, lang)
+            return _hybrid_partial_title_bundle(title_ref, lang, summary, error)
+        secondary = await _hybrid_get_secondary_bundle_quick(primary, lang)
+        merged = _hybrid_merge_bundle(primary, secondary, lang)
+        if not merged.get("chapters_partial") and not merged.get("metadata_partial") and not merged.get("hybrid_secondary_partial"):
+            _cache_set(cache_key, merged)
+        return merged
+
+    task = asyncio.create_task(_load())
+    _INFLIGHT[cache_key] = task
+    try:
+        return await task
+    finally:
+        _INFLIGHT.pop(cache_key, None)
+
+
+def _hybrid_get_cached_title_bundle(title_ref: str, lang: str | None = None) -> dict[str, Any] | None:
+    direct_source = _hybrid_source_for_ref(title_ref)
+    if direct_source:
+        getter = getattr(direct_source, "get_cached_title_bundle", None)
+        return getter(title_ref, lang) if getter else None
+    cache_key = f"hybrid-title-bundle:{_clean(title_ref)}:{_hybrid_translation_lang(lang or PREFERRED_CHAPTER_LANG)}"
+    cached = _cache_get(cache_key, BUNDLE_TTL)
+    return dict(cached) if isinstance(cached, dict) else None
+
+
+async def _hybrid_get_title_chapters_snapshot(title_ref: str, lang: str | None = None) -> dict[str, Any]:
+    direct_source = _hybrid_source_for_ref(title_ref)
+    if direct_source:
+        return await direct_source.get_title_chapters_snapshot(title_ref, lang)
+    cached = _hybrid_get_cached_title_bundle(title_ref, lang)
+    if cached and cached.get("chapters"):
+        return cached
+    try:
+        summary = _mangaball_get_cached_title_summary(title_ref) or {"title_id": title_ref}
+        primary = await _hybrid_mangaball_chapter_list_bundle(title_ref, lang, summary)
+    except Exception as error:
+        print("[CATALOG][HYBRID_MANGABALL_SNAPSHOT]", title_ref, repr(error))
+        summary = _mangaball_get_cached_title_summary(title_ref) or {"title_id": title_ref}
+        cached_primary = _hybrid_cached_mangaball_bundle(title_ref, lang, summary)
+        if cached_primary:
+            secondary = await _hybrid_get_secondary_bundle_quick(cached_primary, lang)
+            if secondary:
+                return _hybrid_merge_bundle(cached_primary, secondary, lang)
+            return cached_primary
+        partial = _hybrid_partial_title_bundle(title_ref, lang, summary, error)
+        secondary = await _hybrid_get_secondary_bundle_quick(partial, lang)
+        if secondary:
+            return _hybrid_merge_bundle(partial, secondary, lang)
+        return partial
+    if primary.get("chapters_partial") or not _hybrid_flatten_chapters(primary, lang):
+        secondary = await _hybrid_get_secondary_bundle_quick(primary, lang)
+        if secondary:
+            return _hybrid_merge_bundle(primary, secondary, lang)
+    async def _refresh_bundle_quietly() -> None:
+        try:
+            await _hybrid_get_title_bundle(title_ref, lang)
+        except Exception as error:
+            print("[CATALOG][HYBRID_BACKGROUND_BUNDLE]", title_ref, repr(error))
+
+    try:
+        asyncio.create_task(_refresh_bundle_quietly())
+    except RuntimeError:
+        pass
+    snapshot = dict(primary)
+    snapshot["source"] = "hybrid"
+    snapshot["primary_source"] = "mangaball"
+    snapshot["sources"] = ["mangaball"]
+    snapshot["chapters_partial"] = True
+    snapshot["hybrid_secondary_partial"] = True
+    return snapshot
+
+
+async def _hybrid_get_chapter_list(title_id: str, lang: str | None = None) -> dict[str, Any]:
+    direct_source = _hybrid_source_for_ref(title_id)
+    if direct_source:
+        return await direct_source.get_chapter_list(title_id, lang)
+    try:
+        primary = await _hybrid_mangaball_call(
+            "chapter_list",
+            lambda: _mangaball_get_chapter_list(title_id, lang),
+            float(os.getenv("HYBRID_MANGABALL_CHAPTERS_TIMEOUT", "26.0") or 26.0),
+        )
+    except Exception as error:
+        print("[CATALOG][HYBRID_MANGABALL_CHAPTERS]", title_id, repr(error))
+        summary = _mangaball_get_cached_title_summary(title_id) or {"title_id": title_id}
+        cached_primary = _hybrid_cached_mangaball_bundle(title_id, lang, summary)
+        if cached_primary:
+            secondary = await _hybrid_get_secondary_bundle_quick(cached_primary, lang)
+            secondary_data = secondary if isinstance(secondary, dict) and secondary else {}
+            secondary_sources = [
+                str(source or "")
+                for source in (secondary_data.get("sources") or [secondary_data.get("source")])
+                if str(source or "")
+            ]
+            return {
+                "title_id": title_id,
+                "source": "hybrid",
+                "primary_source": "mangaball",
+                "sources": ["mangaball", *[source for source in secondary_sources if source != "mangaball"]],
+                "chapters": _hybrid_merge_chapter_groups(cached_primary.get("chapters") or [], secondary_data.get("chapters") or [], lang),
+                "volumes": _hybrid_merge_chapter_groups(cached_primary.get("volumes") or [], secondary_data.get("volumes") or [], lang),
+                "languages": _hybrid_union_languages(cached_primary, secondary_data),
+                "chapters_partial": not bool((cached_primary.get("chapters") or []) or (secondary_data.get("chapters") or [])),
+                "metadata_partial": bool(cached_primary.get("metadata_partial")) and not bool(secondary_data),
+                "hybrid_secondary_partial": not bool(secondary_data),
+            }
+        partial = _hybrid_partial_title_bundle(title_id, lang, summary, error)
+        secondary = await _hybrid_get_secondary_bundle_quick(partial, lang)
+        if isinstance(secondary, dict) and secondary:
+            secondary_sources = [
+                str(source or "")
+                for source in (secondary.get("sources") or [secondary.get("source")])
+                if str(source or "")
+            ]
+            return {
+                "title_id": title_id,
+                "source": "hybrid",
+                "primary_source": "mangaball",
+                "sources": ["mangaball", *[source for source in secondary_sources if source != "mangaball"]],
+                "chapters": _hybrid_merge_chapter_groups([], secondary.get("chapters") or [], lang),
+                "volumes": _hybrid_merge_chapter_groups([], secondary.get("volumes") or [], lang),
+                "languages": _hybrid_union_languages(partial, secondary),
+                "chapters_partial": not bool(secondary.get("chapters")),
+                "metadata_partial": bool(partial.get("metadata_partial")),
+                "hybrid_secondary_partial": False,
+            }
+        return _hybrid_partial_chapter_list(title_id, lang, error)
+    summary = _mangaball_get_cached_title_summary(title_id) or {"title_id": title_id}
+    secondary = await _hybrid_get_secondary_bundle_quick(summary, lang)
+    secondary_error = bool(secondary.get("_hybrid_secondary_error")) if isinstance(secondary, dict) else False
+    secondary_data = secondary if secondary and not secondary_error else {}
+    return {
+        **primary,
+        "source": "hybrid",
+        "sources": ["mangaball", *([] if not secondary_data else ["mangafire"])],
+        "chapters": _hybrid_merge_chapter_groups(primary.get("chapters") or [], secondary_data.get("chapters") or [], lang),
+        "volumes": _hybrid_merge_chapter_groups([], secondary_data.get("volumes") or primary.get("volumes") or [], lang),
+        "languages": _hybrid_union_languages(primary, secondary_data),
+        "chapters_partial": (bool(primary.get("chapters_partial")) and not bool(secondary_data.get("chapters"))) or secondary_error,
+        "metadata_partial": (bool(primary.get("metadata_partial")) and not secondary_data) or secondary_error,
+        "hybrid_secondary_partial": secondary_error,
+    }
+
+
+async def _hybrid_get_chapter_list_fast(title_id: str, lang: str | None = None) -> dict[str, Any]:
+    return await _hybrid_get_chapter_list(title_id, lang)
+
+
+def _hybrid_flatten_chapters(chapter_payload: dict[str, Any] | list[Any], preferred_lang: str | None = None, *, ascending: bool = False) -> list[dict[str, Any]]:
+    preferred_lang = _clean(preferred_lang).lower() or PREFERRED_CHAPTER_LANG
+    if isinstance(chapter_payload, list):
+        chapter_payload = {"chapters": chapter_payload}
+    if not isinstance(chapter_payload, dict):
+        return []
+
+    title_id = _extract_title_id(chapter_payload.get("title_id")) or _clean(chapter_payload.get("title_id"))
+    chapters = [item for item in (chapter_payload.get("chapters") or []) if isinstance(item, dict)]
+
+    def sort_key(item: dict[str, Any]):
+        number = _hybrid_chapter_number(item.get("chapter_number_float") or item.get("chapter_number"))
+        try:
+            return Decimal(number)
+        except Exception:
+            return Decimal("-1")
+
+    chapters.sort(key=sort_key, reverse=not ascending)
+    items: list[dict[str, Any]] = []
+    for chapter in chapters:
+        translations = [item for item in (chapter.get("translations") or []) if isinstance(item, dict)]
+        if not translations:
+            continue
+        translation = next(
+            (item for item in translations if _clean(item.get("language")).lower().replace("_", "-") == preferred_lang),
+            None,
+        )
+        if not translation:
+            translation = translations[0]
+        chapter_id = translation.get("id") or translation.get("chapter_id") or chapter.get("chapter_id") or ""
+        items.append(
+            {
+                "chapter_id": chapter_id,
+                "chapter_url": translation.get("url") or translation.get("chapter_url") or chapter.get("chapter_url") or "",
+                "title_id": title_id,
+                "chapter_number": chapter.get("chapter_number") or chapter.get("chapter_number_float") or "",
+                "chapter_number_float": _hybrid_chapter_number(chapter.get("chapter_number_float") or chapter.get("chapter_number")),
+                "chapter_language": translation.get("language") or chapter.get("chapter_language") or preferred_lang,
+                "chapter_volume": translation.get("volume") or chapter.get("chapter_volume") or "",
+                "group_name": translation.get("group_name") or chapter.get("group_name") or "",
+                "updated_at": translation.get("date") or chapter.get("updated_at") or "",
+                "title": chapter.get("title") or "",
+                "cover_url": translation.get("cover_url") or chapter.get("cover_url") or "",
+                "source": chapter.get("source") or "",
+                "sources": chapter.get("sources") or [],
+            }
+        )
+        _remember_chapter_title(chapter_id, title_id)
+    return items
+
+
+def _hybrid_get_adjacent_chapters(chapter_payload: dict[str, Any], chapter_id: str, preferred_lang: str | None = None):
+    flattened = _hybrid_flatten_chapters(chapter_payload, preferred_lang, ascending=True)
+    current_id = _extract_chapter_id(chapter_id) or _clean(chapter_id)
+    for index, item in enumerate(flattened):
+        if item.get("chapter_id") != current_id:
+            continue
+        return (
+            flattened[index - 1] if index > 0 else None,
+            flattened[index + 1] if index + 1 < len(flattened) else None,
+        )
+    return None, None
+
+
+async def _hybrid_get_chapter_details(chapter_ref: str) -> dict[str, Any]:
+    direct_source = _hybrid_source_for_ref(chapter_ref)
+    if direct_source:
+        return await direct_source.get_chapter_details(chapter_ref)
+    return await _mangaball_get_chapter_details(chapter_ref)
+
+
+async def _hybrid_get_chapter_reader_payload(chapter_ref: str, lang: str | None = None, title_hint: str = "") -> dict[str, Any]:
+    direct_source = _hybrid_source_for_ref(chapter_ref)
+    if direct_source:
+        return await direct_source.get_chapter_reader_payload(chapter_ref, lang, title_hint)
+    return await _mangaball_get_chapter_reader_payload(chapter_ref, lang, title_hint)
+
+
+def _hybrid_get_cached_chapter_reader_payload(chapter_ref: str, lang: str | None = None, title_hint: str = "") -> dict[str, Any] | None:
+    direct_source = _hybrid_source_for_ref(chapter_ref)
+    if direct_source:
+        return direct_source.get_cached_chapter_reader_payload(chapter_ref, lang, title_hint)
+    return _mangaball_get_cached_chapter_reader_payload(chapter_ref, lang, title_hint)
+
+
+async def _hybrid_get_title_details(title_ref: str) -> dict[str, Any]:
+    direct_source = _hybrid_source_for_ref(title_ref)
+    if direct_source:
+        return await direct_source.get_title_details(title_ref)
+    return await _mangaball_get_title_details(title_ref)
+
+
+async def _hybrid_get_title_overview(title_ref: str) -> dict[str, Any]:
+    direct_source = _hybrid_source_for_ref(title_ref)
+    if direct_source:
+        return await direct_source.get_title_overview(title_ref)
+    return await _mangaball_get_title_overview(title_ref)
+
+
+async def _hybrid_get_home_payload(limit: int = HOME_SECTION_LIMIT) -> dict[str, Any]:
+    limit = max(4, int(limit))
+
+    def has_home_media(item: dict[str, Any]) -> bool:
+        return bool(
+            item.get("cover_url")
+            or item.get("cover")
+            or item.get("poster")
+            or item.get("image")
+            or item.get("thumbnail")
+        )
+
+    def is_home_ready(item: dict[str, Any]) -> bool:
+        return _hybrid_search_item_has_live_metadata(item) and has_home_media(item)
+
+    def has_items(payload: dict[str, Any]) -> bool:
+        for key in ("featured", "manga", "manhwa", "manhua", "recommended", "top_viewed", "latest_updates", "recent_chapter_read", "popular_season"):
+            for item in payload.get(key) or []:
+                if isinstance(item, dict) and is_home_ready(item):
+                    return True
+        return False
+
+    def live_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [item for item in items or [] if isinstance(item, dict) and is_home_ready(item)]
+
+    def normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        featured = live_items(list(payload.get("featured") or []))[: min(limit, 10)]
+        manga = live_items(list(payload.get("manga") or []))[:limit]
+        manhwa = live_items(list(payload.get("manhwa") or []))[:limit]
+        manhua = live_items(list(payload.get("manhua") or []))[:limit]
+        recommended = live_items(list(payload.get("recommended") or []))[:limit]
+        top_viewed = live_items(list(payload.get("top_viewed") or payload.get("popular") or []))[:limit]
+        latest_updates = live_items(list(payload.get("latest_updates") or payload.get("recent_chapters") or []))[: max(limit, 12)]
+        recent_chapter_read = live_items(list(payload.get("recent_chapter_read") or payload.get("recent_titles") or []))[:limit]
+        popular_season = live_items(list(payload.get("popular_season") or []))[:limit]
+
+        if not featured:
+            featured = (manga or manhwa or manhua or popular_season or recommended or top_viewed or latest_updates or recent_chapter_read)[: min(limit, 10)]
+        if not recommended:
+            recommended = (featured or top_viewed or popular_season or manga or latest_updates or recent_chapter_read)[:limit]
+        if not popular_season:
+            popular_season = (top_viewed or recommended or featured or manga or latest_updates or recent_chapter_read)[:limit]
+        if not manga:
+            manga = (featured or popular_season or recommended or top_viewed or latest_updates or recent_chapter_read)[:limit]
+        if not manhwa:
+            manhwa = (recommended or top_viewed or featured or popular_season or latest_updates or recent_chapter_read)[:limit]
+        if not manhua:
+            manhua = (popular_season or recommended or featured or top_viewed or latest_updates or recent_chapter_read)[:limit]
+        if not top_viewed:
+            top_viewed = (popular_season or recommended or featured or latest_updates or recent_chapter_read)[:limit]
+        if not recent_chapter_read:
+            recent_chapter_read = (top_viewed or latest_updates or featured)[:limit]
+        if not latest_updates:
+            latest_updates = recent_chapter_read[: max(limit, 12)]
+
+        return {
+            "featured": featured,
+            "manga": manga,
+            "manhwa": manhwa,
+            "manhua": manhua,
+            "recommended": recommended,
+            "top_viewed": top_viewed,
+            "latest_updates": latest_updates,
+            "recent_chapter_read": recent_chapter_read,
+            "popular_season": popular_season,
+            "popular": top_viewed,
+            "recent_titles": recent_chapter_read,
+            "latest_titles": latest_updates,
+            "recent_chapters": latest_updates,
+        }
+
+    cached = _mangaball_get_cached_home_snapshot(limit) or {}
+    if has_items(cached):
+        return normalize_payload(cached)
+
+    try:
+        asyncio.create_task(_mangaball_get_home_payload(limit))
+    except RuntimeError:
+        pass
+
+    for source_name, producer in (
+        ("mangafire", lambda: _mangafire.get_home_payload(limit)),
+        ("mangadex", lambda: _mangadex.get_home_payload(limit)),
+        ("mangalivre", lambda: _mangalivre.get_home_payload(limit)),
+    ):
+        try:
+            payload = await asyncio.wait_for(producer(), timeout=7.5)
+            if isinstance(payload, dict) and has_items(payload):
+                return normalize_payload(payload)
+        except Exception as error:
+            print(f"[CATALOG][HYBRID_HOME_FALLBACK_SKIP] {source_name} {error!r}")
+
+    fallback_pool = list(_iter_local_search_seed_candidates(limit=max(limit * 5, 48)))
+    return normalize_payload({
+        "featured": fallback_pool[: min(limit, 10)],
+        "manga": fallback_pool[:limit],
+        "recommended": fallback_pool[limit : limit * 2] or fallback_pool[:limit],
+        "top_viewed": fallback_pool[limit * 2 : limit * 3] or fallback_pool[:limit],
+        "recent_chapter_read": fallback_pool[limit * 3 : limit * 4] or fallback_pool[:limit],
+        "popular_season": fallback_pool[limit * 4 : limit * 5] or fallback_pool[:limit],
+    })
+
+
+async def _hybrid_get_recent_chapters(limit: int = AUTO_POST_LIMIT) -> list[dict[str, Any]]:
+    target_limit = max(1, int(limit or AUTO_POST_LIMIT))
+    primary_result = await _mangaball_get_recent_chapters(target_limit)
+    primary = primary_result if isinstance(primary_result, list) else []
+    secondary: list[dict[str, Any]] = []
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for source, items in (("mangaball", primary), ("mangafire", secondary)):
+        for item in items:
+            title_key = _hybrid_title_key(item) or _clean(item.get("title_id"))
+            chapter_key = _hybrid_chapter_number(item.get("chapter_number") or item.get("latest_chapter"))
+            key = f"{title_key}:{chapter_key}" if title_key and chapter_key else _clean(item.get("chapter_id"))
+            if not key or key in seen:
+                continue
+            copy = dict(item)
+            copy.setdefault("source", source)
+            copy["sources"] = [source]
+            seen.add(key)
+            merged.append(copy)
+            if len(merged) >= target_limit:
+                return merged
+    return merged
+
+
+if _hybrid_enabled():
+    from services import mangafire_client as _mangafire
+    from services import mangadex_client as _mangadex
+    from services import mangalivre_client as _mangalivre
+
+    clear_catalog_cache = _mangaball_clear_catalog_cache
+    get_csrf_token = _mangaball_get_csrf_token
+
+    get_search_fallback_titles = _mangaball_get_search_fallback_titles
+    get_cached_search_titles = _mangaball_get_cached_search_titles
+    search_titles = _hybrid_search_titles
+    search_titles_fast = _hybrid_search_titles_fast
+
+    get_title_search = _mangaball_get_title_search
+    get_cached_title_search = _mangaball_get_cached_title_search
+    get_origin_titles = _mangaball_get_origin_titles
+    get_home_payload = _hybrid_get_home_payload
+    get_cached_home_snapshot = _mangaball_get_cached_home_snapshot
+    get_recent_chapter_updates = _mangaball_get_recent_chapter_updates
+    get_recent_chapters = _hybrid_get_recent_chapters
+
+    get_cached_title_summary = _mangaball_get_cached_title_summary
+    get_title_details = _hybrid_get_title_details
+    get_title_overview = _hybrid_get_title_overview
+    get_title_chapters_snapshot = _hybrid_get_title_chapters_snapshot
+    get_title_bundle = _hybrid_get_title_bundle
+    get_cached_title_bundle = _hybrid_get_cached_title_bundle
+
+    get_chapter_list = _hybrid_get_chapter_list
+    get_chapter_list_fast = _hybrid_get_chapter_list_fast
+    get_cached_chapter_list = _mangaball_get_cached_chapter_list
+    flatten_chapters = _hybrid_flatten_chapters
+    get_adjacent_chapters = _hybrid_get_adjacent_chapters
+    get_chapter_details = _hybrid_get_chapter_details
+    get_chapter_reader_payload = _hybrid_get_chapter_reader_payload
+    get_cached_chapter_reader_payload = _hybrid_get_cached_chapter_reader_payload
+
+    warm_catalog_cache = _mangaball_warm_catalog_cache
+    schedule_warm_catalog_cache = _mangaball_schedule_warm_catalog_cache
+    prefetch_title_bundles = _mangaball_prefetch_title_bundles
+    prefetch_reader_payloads = _mangaball_prefetch_reader_payloads
+elif _use_mangafire_source():
+    from services import mangafire_client as _mangafire
+
+    clear_catalog_cache = _mangafire.clear_catalog_cache
+    get_csrf_token = _mangafire.get_csrf_token
+
+    get_search_fallback_titles = _mangafire.get_search_fallback_titles
+    get_cached_search_titles = _mangafire.get_cached_search_titles
+    search_titles = _mangafire.search_titles
+    search_titles_fast = _mangafire.search_titles_fast
+
+    get_title_search = _mangafire.get_title_search
+    get_cached_title_search = _mangafire.get_cached_title_search
+    get_origin_titles = _mangafire.get_origin_titles
+    get_home_payload = _mangafire.get_home_payload
+    get_cached_home_snapshot = _mangafire.get_cached_home_snapshot
+    get_recent_chapter_updates = _mangafire.get_recent_chapter_updates
+    get_recent_chapters = _mangafire.get_recent_chapters
+
+    get_cached_title_summary = _mangafire.get_cached_title_summary
+    get_title_details = _mangafire.get_title_details
+    get_title_overview = _mangafire.get_title_overview
+    get_title_chapters_snapshot = _mangafire.get_title_chapters_snapshot
+    get_title_bundle = _mangafire.get_title_bundle
+    get_cached_title_bundle = lambda title_ref, lang=None: None
+
+    get_chapter_list = _mangafire.get_chapter_list
+    get_chapter_list_fast = _mangafire.get_chapter_list_fast
+    get_cached_chapter_list = _mangafire.get_cached_chapter_list
+    flatten_chapters = _mangafire.flatten_chapters
+    get_adjacent_chapters = _mangafire.get_adjacent_chapters
+    get_chapter_details = _mangafire.get_chapter_details
+    get_chapter_reader_payload = _mangafire.get_chapter_reader_payload
+    get_cached_chapter_reader_payload = _mangafire.get_cached_chapter_reader_payload
+
+    warm_catalog_cache = _mangafire.warm_catalog_cache
+    schedule_warm_catalog_cache = _mangafire.schedule_warm_catalog_cache
+    prefetch_title_bundles = _mangafire.prefetch_title_bundles
+    prefetch_reader_payloads = _mangafire.prefetch_reader_payloads
