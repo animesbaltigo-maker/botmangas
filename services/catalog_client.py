@@ -3359,13 +3359,15 @@ def _hybrid_bad_match_title(value: Any) -> bool:
     if not normalized:
         return True
     bad_fragments = (
+        "manga",
+        "manga online",
         "leia manga",
         "leia manga e quadrinhos",
         "manga e quadrinhos",
         "mangaball",
         "mangas online",
     )
-    return any(fragment in normalized for fragment in bad_fragments)
+    return normalized in bad_fragments or any(fragment in normalized for fragment in bad_fragments if fragment != "manga")
 
 
 def _hybrid_title_tokens(value: Any) -> set[str]:
