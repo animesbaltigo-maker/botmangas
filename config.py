@@ -106,6 +106,7 @@ CATALOG_COOKIE_HEADER = os.getenv("CATALOG_COOKIE_HEADER", "").strip()
 CATALOG_USER_AGENT = os.getenv("CATALOG_USER_AGENT", "").strip()
 
 REQUIRED_CHANNEL = os.getenv("REQUIRED_CHANNEL", "@MangasBrasil").strip()
+REQUIRED_CHANNELS = _env_str_list("REQUIRED_CHANNELS") or [REQUIRED_CHANNEL]
 REQUIRED_CHANNEL_URL = os.getenv("REQUIRED_CHANNEL_URL", "t.me/MangasBrasil").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "MangasBaltigo_Bot").strip().lstrip("@")
 BOT_BRAND = os.getenv("BOT_BRAND", "Mangas Baltigo").strip()
